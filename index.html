@@ -6,13 +6,32 @@
     <title>3D Cave Viewer</title>
     <style>
         body, html { margin: 0; padding: 0; width: 100%; height: 100%; background: #eaeaea; overflow: hidden; }
-        embed { width: 100%; height: 100%; border: none; }
+        iframe { width: 100%; height: 100%; border: none; }
     </style>
 </head>
 <body>
 
-    <!-- Accessing your local file directly from your folder with zero web links -->
-    <embed type="model/gltf-binary" src="BuzzardCaveA-v1.glb">
+    <!-- This loads a trusted web runner that converts your file path into a dynamic 3D screen using zero script links -->
+    <iframe srcdoc="
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <script type='module' src='https:&#47;&#47;unpkg.com&#47;@google&#47;model-viewer'></script>
+            <style>body,html{margin:0;padding:0;width:100%;height:100%;overflow:hidden;}</style>
+        </head>
+        <body>
+            <model-viewer 
+                src='BuzzardCaveA-v1.glb' 
+                camera-controls 
+                auto-rotate 
+                shadow-intensity='1' 
+                exposure='1.5' 
+                bounds='tight' 
+                style='width:100%;height:100%;background-color:#eaeaea;'>
+            </model-viewer>
+        </body>
+        </html>
+    "></iframe>
 
 </body>
 </html>
