@@ -52,7 +52,7 @@
                 const CROUCH_HEIGHT = 0.8;
                 let targetHeight = STAND_HEIGHT;
                 
-                camera.position.set(0, STAND_HEIGHT, 5);
+                camera.position.set(0, 10, 40);
 
                 const renderer = new THREE.WebGLRenderer({ antialias: true });
                 renderer.setSize(window.innerWidth, window.innerHeight);
@@ -63,7 +63,7 @@
                 const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
                 scene.add(ambientLight);
 
-                const flashlight = new THREE.SpotLight(0xfff5df, 2.0, 40, Math.PI / 5, 0.5, 1);
+               const flashlight = new THREE.SpotLight(0xffffff, 50);
                 camera.add(flashlight);
                 flashlight.position.set(0, 0, 0);
                 flashlight.target = new THREE.Object3D();
