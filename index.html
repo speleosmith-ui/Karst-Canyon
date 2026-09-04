@@ -45,12 +45,13 @@
             padding: 20px;
             border-radius: 8px;
             border: 1px solid #555;
-            z-index: 5;
+            z-index: 20; /* Layering fixed to float ABOVE the blocker instruction window when paused */
             width: 250px;
             display: flex;
             flex-direction: column;
             gap: 15px;
             pointer-events: auto;
+            cursor: default; /* Forces browser arrow pointer visibility */
         }
         .control-group {
             display: flex;
@@ -165,7 +166,7 @@
         controls.addEventListener('unlock', () => blocker.style.display = 'flex');
 
         let isFlyMode = true;
-        let currentStance = 'stand'; 
+        let currentStance = 'stand';
 
         const STANCES = {
             stand: { height: 2.0, speed: 18.0, label: 'STANDING' },
