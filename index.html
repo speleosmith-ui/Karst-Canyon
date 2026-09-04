@@ -32,14 +32,11 @@
             line-height: 1.6;
         }
     </style>
-    <!-- Core Three.js Framework -->
-    <script src="https://cloudflare.com"></script>
-    <!-- Pointer Lock Controls for First Person Movement -->
-    <script src="https://jsdelivr.net"></script>
-    <!-- GLTF/GLB Asset Loader -->
-    <script src="https://jsdelivr.net"></script>
-    <!-- Draco Unpacking Subsystem Module -->
-    <script src="https://jsdelivr.net"></script>
+    <!-- Stable Framework Elements -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/PointerLockControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/DRACOLoader.js"></script>
 </head>
 <body>
 
@@ -55,21 +52,20 @@
 
     <script>
         const scene = new THREE.Scene();
-        scene.background = new THREE.Color(0x050505);
+        scene.background = new THREE.Color(0x0a0a0a);
 
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-        // Default position: adjust these numbers if you spawn inside a wall or outside the cave
-        camera.position.set(0, 10, 40);
+        // Positioned close to world center to ensure visibility
+        camera.position.set(0, 2, 5); 
 
         const renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
         document.body.appendChild(renderer.domElement);
 
-        // General ambient lighting
-        const ambientLight = new THREE.AmbientLight(0xffffff, 0.15);
+        // Flooding environment with bright light to bypass darkness errors
+        const ambientLight = new THREE.AmbientLight(0xffffff, 1.8);
         scene.add(ambientLight);
 
-        // Powerful flashlight attached to camera gaze
         const flashlight = new THREE.SpotLight(0xffffff, 15, 100, Math.PI / 5, 0.5, 1);
         scene.add(flashlight);
         scene.add(flashlight.target);
@@ -83,9 +79,9 @@
         controls.addEventListener('unlock', () => blocker.style.display = 'flex');
 
         const moveState = { forward: false, backward: false, left: false, right: false, crouching: false };
-        let currentSpeed = 40.0;
-        const STAND_HEIGHT = 10.0;
-        const CROUCH_HEIGHT = 4.0;
+        let currentSpeed = 30.0;
+        const STAND_HEIGHT = 2.0;
+        const CROUCH_HEIGHT = 0.8;
 
         document.addEventListener('keydown', (e) => {
             if (e.code === 'KeyW' || e.code === 'ArrowUp') moveState.forward = true;
@@ -94,7 +90,7 @@
             if (e.code === 'KeyD' || e.code === 'ArrowRight') moveState.right = true;
             if (e.code === 'ControlLeft' || e.code === 'KeyC') {
                 moveState.crouching = true;
-                currentSpeed = 15.0; // Slower speed when crouching
+                currentSpeed = 10.0;
             }
         });
 
@@ -105,24 +101,28 @@
             if (e.code === 'KeyD' || e.code === 'ArrowRight') moveState.right = false;
             if (e.code === 'ControlLeft' || e.code === 'KeyC') {
                 moveState.crouching = false;
-                currentSpeed = 40.0;
+                currentSpeed = 30.0;
             }
         });
 
-        // Initialize GLTF Loader and Draco Unpacker
+        console.log("Initializing asset loader modules...");
         const loader = new THREE.GLTFLoader();
         const dracoLoader = new THREE.DRACOLoader();
         
-        // Correct standalone decoder pathing
-        dracoLoader.setDecoderPath('https://gstatic.com');
+        // Pointing to official public unpacker repository
+        dracoLoader.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.6/');
         loader.setDRACOLoader(dracoLoader);
 
-        // Load your cave asset
+        console.log("Requesting cave data asset file from server level...");
         loader.load('BuzzardCaveA-v1.glb', function (gltf) {
             scene.add(gltf.scene);
-            console.log('Draco-compressed cave model loaded successfully!');
-        }, undefined, function (error) {
-            console.error('Error unpacking model assets:', error);
+            console.log('SUCCESS: Draco-compressed cave model parsed and added to scene graph!');
+        }, function (xhr) {
+            if (xhr.total > 0) {
+                console.log('Loading progress: ' + Math.round((xhr.loaded / xhr.total * 100)) + '%');
+            }
+        }, function (error) {
+            console.error('ERROR: Failed to unpack or parse model asset:', error);
         });
 
         const clock = new THREE.Clock();
@@ -143,12 +143,10 @@
                 controls.moveForward(-velocity.z * currentSpeed * deltaTime);
                 controls.moveRight(velocity.x * currentSpeed * deltaTime);
 
-                // Smoothly lower camera view when crouching
                 let targetHeight = moveState.crouching ? CROUCH_HEIGHT : STAND_HEIGHT;
                 camera.position.y += (targetHeight - camera.position.y) * 0.15;
             }
 
-            // Sync flashlight movement and rotation with the camera position
             flashlight.position.copy(camera.position);
             const vector = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
             flashlight.target.position.copy(camera.position).add(vector);
