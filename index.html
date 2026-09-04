@@ -9,15 +9,11 @@
         #blocker { position: absolute; width: 100%; height: 100%; background-color: rgba(0,0,0,0.6); display: flex; justify-content: center; align-items: center; color: white; font-family: sans-serif; text-align: center; cursor: pointer; z-index: 10; }
         #instructions { font-size: 20px; line-height: 1.6; }
     </style>
-    <!-- FIXED: Pointing to valid, version-locked Three.js CDN paths on unpkg -->
-    <script type="importmap">
-    {
-        "imports": {
-            "three": "https://unpkg.com",
-            "three/addons/": "https://unpkg.com"
-        }
-    }
-    </script>
+
+    <!-- Hardcoded Scripts: Bypasses the fragile import map entirely -->
+    <script src="https://cloudflare.com"></script>
+    <script src="https://jsdelivr.net"></script>
+    <script src="https://jsdelivr.net"></script>
 </head>
 <body>
     <div id="blocker">
@@ -29,11 +25,7 @@
         </div>
     </div>
 
-    <script type="module">
-        import * as THREE from 'three';
-        import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
-        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-
+    <script>
         // 1. Core Scene Setup
         const scene = new THREE.Scene();
         scene.background = new THREE.Color(0x222222);
@@ -53,8 +45,8 @@
         dirLight.position.set(5, 10, 7);
         scene.add(dirLight);
 
-        // 3. Controls & Overlay Setup
-        const controls = new PointerLockControls(camera, document.body);
+        // 3. Controls Setup
+        const controls = new THREE.PointerLockControls(camera, document.body);
         scene.add(controls.getObject());
 
         const blocker = document.getElementById('blocker');
@@ -80,7 +72,7 @@
         });
 
         // 5. Load your exported GLB Model
-        const loader = new GLTFLoader();
+        const loader = new THREE.GLTFLoader();
         loader.load('BuzzardCaveA-v1.glb', function (gltf) {
             scene.add(gltf.scene);
             console.log("Model loaded successfully!");
@@ -100,7 +92,6 @@
             if (controls.isLocked) {
                 velocity.set(0, 0, 0);
 
-                // FIXED: Three.js treats negative Z as walking forward
                 if (moveState.forward) velocity.z -= 1;
                 if (moveState.backward) velocity.z += 1;
                 if (moveState.left) velocity.x -= 1;
@@ -108,7 +99,6 @@
 
                 velocity.normalize();
 
-                // FIXED: Adjusted to coordinate with Three.js movement space natively
                 controls.moveForward(-velocity.z * moveSpeed * deltaTime);
                 controls.moveRight(velocity.x * moveSpeed * deltaTime);
             }
