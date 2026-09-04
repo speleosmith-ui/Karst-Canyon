@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>3D Cave First-Person Walk & Crouch</title>
+    <title>3D Cave Walkthrough</title>
     <style>
         body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #111; }
         iframe { width: 100%; height: 100%; border: none; }
@@ -11,81 +11,70 @@
 </head>
 <body>
 
-    <!-- Using HTML entities for slashes &#47; and quotes &#39; to safely protect the entire codebase from filter truncation -->
+    <!-- This securely frames the entire Three.js game engine with Draco decompression fully supported -->
     <iframe srcdoc="
         <!DOCTYPE html>
         <html>
         <head>
             <meta charset='UTF-8'>
-            <title>Internal Frame</title>
-            <script src='https:&#47;&#47;cdnjs.cloudflare.com&#47;ajax&#47;libs&#47;three.js&#47;r128&#47;three.min.js'></script>
+            <style>
+                body { margin: 0; overflow: hidden; background-color: #111; }
+                #blocker { position: absolute; width: 100%; height: 100%; background-color: rgba(0,0,0,0.7); display: flex; justify-content: center; align-items: center; color: white; font-family: sans-serif; text-align: center; cursor: pointer; z-index: 10; }
+                #instructions { font-size: 20px; line-height: 1.6; }
+            </style>
+            <!-- Loading core Three.js framework assets safely -->
+            <script src='https:&#47;&#47;://cloudflare.com&#47;ajax&#47;libs&#47;three.js&#47;r128&#47;three.min.js'></script>
             <script src='https:&#47;&#47;cdn.jsdelivr.net&#47;npm&#47;three@0.128.0&#47;examples&#47;js&#47;controls&#47;PointerLockControls.js'></script>
             <script src='https:&#47;&#47;cdn.jsdelivr.net&#47;npm&#47;three@0.128.0&#47;examples&#47;js&#47;loaders&#47;GLTFLoader.js'></script>
-            <style>
-                body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background-color: #111; }
-                #blocker { position: absolute; width: 100%; height: 100%; background-color: rgba(0,0,0,0.7); display: flex; justify-content: center; align-items: center; color: white; font-family: sans-serif; text-align: center; cursor: pointer; z-index: 10; }
-                #instructions { font-size: 20px; line-height: 1.8; }
-                #crouch-indicator { position: absolute; bottom: 20px; left: 20px; color: #00ff00; font-family: monospace; font-size: 18px; z-index: 5; display: none; background: rgba(0,0,0,0.5); padding: 5px 10px; border-radius: 4px; }
-            </style>
+            <!-- Injecting the missing Draco Decoder scripts -->
+            <script src='https:&#47;&#47;cdn.jsdelivr.net&#47;npm&#47;three@0.128.0&#47;examples&#47;js&#47;loaders&#47;DRACOLoader.js'></script>
         </head>
         <body>
             <div id='blocker'>
                 <div id='instructions'>
-                    <span style='font-size:36px; font-weight:bold;'>Click to Walk Inside Cave</span><br/><br/>
-                    Move: WASD keys<br/>
-                    Look: Move Mouse<br/>
-                    Crouch: Hold or Toggle LEFT CTRL / C<br/>
+                    <span style='font-size:36px; font-weight:bold;'>Click to Explore Cave</span><br/><br/>
+                    Move: WASD or Arrow Keys<br/>
+                    Look: Move your Mouse<br/>
+                    Crouch: Hold LEFT CTRL or C<br/>
                     Exit: ESC key
                 </div>
             </div>
-            <div id='crouch-indicator'>CROUCHING</div>
 
             <script>
                 const scene = new THREE.Scene();
-                scene.background = new THREE.Color(0x111111);
-                scene.fog = new THREE.FogExp2(0x111111, 0.015);
+                scene.background = new THREE.Color(0x050505);
 
                 const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
                 
-                // Height tracking variables
-                const STAND_HEIGHT = 2.0;
-                const CROUCH_HEIGHT = 0.8;
-                let targetHeight = STAND_HEIGHT;
-                
-                camera.position.set(0, 10, 40);
+                // Pushed back and up safely to avoid spawning inside geometry
+                camera.position.set(0, 10, 40); 
 
                 const renderer = new THREE.WebGLRenderer({ antialias: true });
                 renderer.setSize(window.innerWidth, window.innerHeight);
-                renderer.outputEncoding = THREE.sRGBEncoding;
                 document.body.appendChild(renderer.domElement);
 
-                // Comprehensive Cave Lighting
-                const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+                // Environment Ambient Light
+                const ambientLight = new THREE.AmbientLight(0xffffff, 0.15);
                 scene.add(ambientLight);
 
-               const flashlight = new THREE.SpotLight(0xffffff, 50);
-                camera.add(flashlight);
-                flashlight.position.set(0, 0, 0);
-                flashlight.target = new THREE.Object3D();
-                camera.add(flashlight.target);
-                flashlight.target.position.set(0, 0, -1);
-                
-                const dirLight = new THREE.DirectionalLight(0xffffff, 0.4);
-                dirLight.position.set(10, 20, 10);
-                scene.add(dirLight);
+                // Powerful Flashlight mounted to player's face
+                const flashlight = new THREE.SpotLight(0xffffff, 15, 100, Math.PI / 5, 0.5, 1);
+                scene.add(flashlight);
+                scene.add(flashlight.target);
 
                 const controls = new THREE.PointerLockControls(camera, document.body);
                 scene.add(controls.getObject());
 
                 const blocker = document.getElementById('blocker');
-                const crouchIndicator = document.getElementById('crouch-indicator');
-
                 blocker.addEventListener('click', () => controls.lock());
                 controls.addEventListener('lock', () => blocker.style.display = 'none');
                 controls.addEventListener('unlock', () => blocker.style.display = 'flex');
 
-                const moveState = { forward: false, backward: false, left: false, right: false };
-                let isCrouching = false;
+                const moveState = { forward: false, backward: false, left: false, right: false, crouching: false };
+                
+                let currentSpeed = 40.0;
+                const STAND_HEIGHT = 10.0;
+                const CROUCH_HEIGHT = 4.0;
 
                 document.addEventListener('keydown', (e) => {
                     if (e.code === 'KeyW' || e.code === 'ArrowUp') moveState.forward = true;
@@ -93,12 +82,10 @@
                     if (e.code === 'KeyA' || e.code === 'ArrowLeft') moveState.left = true;
                     if (e.code === 'KeyD' || e.code === 'ArrowRight') moveState.right = true;
                     
-                    // Crouch triggers
+                    // Crouch mechanics trigger
                     if (e.code === 'ControlLeft' || e.code === 'KeyC') {
-                        e.preventDefault();
-                        isCrouching = true;
-                        targetHeight = CROUCH_HEIGHT;
-                        crouchIndicator.style.display = 'block';
+                        moveState.crouching = true;
+                        currentSpeed = 15.0; // Slow down when crouching
                     }
                 });
 
@@ -108,24 +95,24 @@
                     if (e.code === 'KeyA' || e.code === 'ArrowLeft') moveState.left = false;
                     if (e.code === 'KeyD' || e.code === 'ArrowRight') moveState.right = false;
                     
-                    // Stand up triggers
                     if (e.code === 'ControlLeft' || e.code === 'KeyC') {
-                        isCrouching = false;
-                        targetHeight = STAND_HEIGHT;
-                        crouchIndicator.style.display = 'none';
+                        moveState.crouching = false;
+                        currentSpeed = 40.0;
                     }
                 });
 
+                // Configure GLTF Loader with the Draco Decompression module
                 const loader = new THREE.GLTFLoader();
+                const dracoLoader = new THREE.DRACOLoader();
+                // Pulls official standalone unpacker assets directly from reliable public repository CDN
+                dracoLoader.setDecoderPath('https:&#47;&#47;://gstatic.com&#47;draco&#47;versioned&#47;decoders&#47;1.5.6&#47;');
+                loader.setDRACOLoader(dracoLoader);
+
                 loader.load('BuzzardCaveA-v1.glb', function (gltf) {
                     scene.add(gltf.scene);
-                    
-                    // Automatically adjust initial camera position if model center is offset
-                    const box = new THREE.Box3().setFromObject(gltf.scene);
-                    const center = box.getCenter(new THREE.Vector3());
-                    controls.getObject().position.set(center.x, center.y + STAND_HEIGHT, center.z + 5);
+                    console.log('Draco-compressed cave model loaded successfully!');
                 }, undefined, function (error) {
-                    console.error('Error loading model:', error);
+                    console.error('Error unpacking model assets:', error);
                 });
 
                 const clock = new THREE.Clock();
@@ -134,10 +121,6 @@
                 function animate() {
                     requestAnimationFrame(animate);
                     const deltaTime = clock.getDelta();
-
-                    // Smooth camera crouching transition layout
-                    const currentY = controls.getObject().position.y;
-                    controls.getObject().position.y += (targetHeight - currentY) * 15 * deltaTime;
 
                     if (controls.isLocked) {
                         velocity.set(0, 0, 0);
@@ -149,12 +132,18 @@
 
                         velocity.normalize();
 
-                        // Slow down movement speed if crouched
-                        const currentSpeed = isCrouching ? 4.0 : 12.0;
-
                         controls.moveForward(-velocity.z * currentSpeed * deltaTime);
                         controls.moveRight(velocity.x * currentSpeed * deltaTime);
+
+                        // Smoothly transition player height position for crouches
+                        let targetHeight = moveState.crouching ? CROUCH_HEIGHT : STAND_HEIGHT;
+                        camera.position.y += (targetHeight - camera.position.y) * 0.15;
                     }
+
+                    // Dynamically bind flashlight focus coordinates onto camera gaze
+                    flashlight.position.copy(camera.position);
+                    const vector = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+                    flashlight.target.position.copy(camera.position).add(vector);
 
                     renderer.render(scene, camera);
                 }
