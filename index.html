@@ -5,159 +5,163 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>3D Cave Walkthrough</title>
     <style>
-        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #111; }
-        iframe { width: 100%; height: 100%; border: none; }
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: #111;
+        }
+        #blocker {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.7);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            color: white;
+            font-family: sans-serif;
+            text-align: center;
+            cursor: pointer;
+            z-index: 10;
+        }
+        #instructions {
+            font-size: 20px;
+            line-height: 1.6;
+        }
     </style>
+    <!-- Core Three.js Framework -->
+    <script src="https://cloudflare.com"></script>
+    <!-- Pointer Lock Controls for First Person Movement -->
+    <script src="https://jsdelivr.net"></script>
+    <!-- GLTF/GLB Asset Loader -->
+    <script src="https://jsdelivr.net"></script>
+    <!-- Draco Unpacking Subsystem Module -->
+    <script src="https://jsdelivr.net"></script>
 </head>
 <body>
 
-    <!-- This securely frames the entire Three.js game engine with Draco decompression fully supported -->
-    <iframe srcdoc="
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <meta charset='UTF-8'>
-            <style>
-                body { margin: 0; overflow: hidden; background-color: #111; }
-                #blocker { position: absolute; width: 100%; height: 100%; background-color: rgba(0,0,0,0.7); display: flex; justify-content: center; align-items: center; color: white; font-family: sans-serif; text-align: center; cursor: pointer; z-index: 10; }
-                #instructions { font-size: 20px; line-height: 1.6; }
-            </style>
-            <!-- Loading core Three.js framework assets safely -->
-            <script src='https:&#47;&#47;://cloudflare.com&#47;ajax&#47;libs&#47;three.js&#47;r128&#47;three.min.js'></script>
-            <script src='https:&#47;&#47;cdn.jsdelivr.net&#47;npm&#47;three@0.128.0&#47;examples&#47;js&#47;controls&#47;PointerLockControls.js'></script>
-            <script src='https:&#47;&#47;cdn.jsdelivr.net&#47;npm&#47;three@0.128.0&#47;examples&#47;js&#47;loaders&#47;GLTFLoader.js'></script>
-            <!-- Injecting the missing Draco Decoder scripts -->
-            <script src='https:&#47;&#47;cdn.jsdelivr.net&#47;npm&#47;three@0.128.0&#47;examples&#47;js&#47;loaders&#47;DRACOLoader.js'></script>
-        </head>
-        <body>
-            <div id='blocker'>
-                <div id='instructions'>
-                    <span style='font-size:36px; font-weight:bold;'>Click to Explore Cave</span><br/><br/>
-                    Move: WASD or Arrow Keys<br/>
-                    Look: Move your Mouse<br/>
-                    Crouch: Hold LEFT CTRL or C<br/>
-                    Exit: ESC key
-                </div>
-            </div>
+    <div id="blocker">
+        <div id="instructions">
+            <span style="font-size:36px; font-weight:bold;">Click to Explore Cave</span><br/><br/>
+            Move: WASD or Arrow Keys<br/>
+            Look: Move your Mouse<br/>
+            Crouch: Hold LEFT CTRL or C<br/>
+            Exit: ESC key
+        </div>
+    </div>
 
-            <script>
-                const scene = new THREE.Scene();
-                scene.background = new THREE.Color(0x050505);
+    <script>
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x050505);
 
-                const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        // Default position: adjust these numbers if you spawn inside a wall or outside the cave
+        camera.position.set(0, 10, 40);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        // General ambient lighting
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.15);
+        scene.add(ambientLight);
+
+        // Powerful flashlight attached to camera gaze
+        const flashlight = new THREE.SpotLight(0xffffff, 15, 100, Math.PI / 5, 0.5, 1);
+        scene.add(flashlight);
+        scene.add(flashlight.target);
+
+        const controls = new THREE.PointerLockControls(camera, document.body);
+        scene.add(controls.getObject());
+
+        const blocker = document.getElementById('blocker');
+        blocker.addEventListener('click', () => controls.lock());
+        controls.addEventListener('lock', () => blocker.style.display = 'none');
+        controls.addEventListener('unlock', () => blocker.style.display = 'flex');
+
+        const moveState = { forward: false, backward: false, left: false, right: false, crouching: false };
+        let currentSpeed = 40.0;
+        const STAND_HEIGHT = 10.0;
+        const CROUCH_HEIGHT = 4.0;
+
+        document.addEventListener('keydown', (e) => {
+            if (e.code === 'KeyW' || e.code === 'ArrowUp') moveState.forward = true;
+            if (e.code === 'KeyS' || e.code === 'ArrowDown') moveState.backward = true;
+            if (e.code === 'KeyA' || e.code === 'ArrowLeft') moveState.left = true;
+            if (e.code === 'KeyD' || e.code === 'ArrowRight') moveState.right = true;
+            if (e.code === 'ControlLeft' || e.code === 'KeyC') {
+                moveState.crouching = true;
+                currentSpeed = 15.0; // Slower speed when crouching
+            }
+        });
+
+        document.addEventListener('keyup', (e) => {
+            if (e.code === 'KeyW' || e.code === 'ArrowUp') moveState.forward = false;
+            if (e.code === 'KeyS' || e.code === 'ArrowDown') moveState.backward = false;
+            if (e.code === 'KeyA' || e.code === 'ArrowLeft') moveState.left = false;
+            if (e.code === 'KeyD' || e.code === 'ArrowRight') moveState.right = false;
+            if (e.code === 'ControlLeft' || e.code === 'KeyC') {
+                moveState.crouching = false;
+                currentSpeed = 40.0;
+            }
+        });
+
+        // Initialize GLTF Loader and Draco Unpacker
+        const loader = new THREE.GLTFLoader();
+        const dracoLoader = new THREE.DRACOLoader();
+        
+        // Correct standalone decoder pathing
+        dracoLoader.setDecoderPath('https://gstatic.com');
+        loader.setDRACOLoader(dracoLoader);
+
+        // Load your cave asset
+        loader.load('BuzzardCaveA-v1.glb', function (gltf) {
+            scene.add(gltf.scene);
+            console.log('Draco-compressed cave model loaded successfully!');
+        }, undefined, function (error) {
+            console.error('Error unpacking model assets:', error);
+        });
+
+        const clock = new THREE.Clock();
+        const velocity = new THREE.Vector3();
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const deltaTime = clock.getDelta();
+
+            if (controls.isLocked) {
+                velocity.set(0, 0, 0);
+                if (moveState.forward) velocity.z -= 1;
+                if (moveState.backward) velocity.z += 1;
+                if (moveState.left) velocity.x -= 1;
+                if (moveState.right) velocity.x += 1;
                 
-                // Pushed back and up safely to avoid spawning inside geometry
-                camera.position.set(0, 10, 40); 
+                velocity.normalize();
+                controls.moveForward(-velocity.z * currentSpeed * deltaTime);
+                controls.moveRight(velocity.x * currentSpeed * deltaTime);
 
-                const renderer = new THREE.WebGLRenderer({ antialias: true });
-                renderer.setSize(window.innerWidth, window.innerHeight);
-                document.body.appendChild(renderer.domElement);
+                // Smoothly lower camera view when crouching
+                let targetHeight = moveState.crouching ? CROUCH_HEIGHT : STAND_HEIGHT;
+                camera.position.y += (targetHeight - camera.position.y) * 0.15;
+            }
 
-                // Environment Ambient Light
-                const ambientLight = new THREE.AmbientLight(0xffffff, 0.15);
-                scene.add(ambientLight);
+            // Sync flashlight movement and rotation with the camera position
+            flashlight.position.copy(camera.position);
+            const vector = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+            flashlight.target.position.copy(camera.position).add(vector);
 
-                // Powerful Flashlight mounted to player's face
-                const flashlight = new THREE.SpotLight(0xffffff, 15, 100, Math.PI / 5, 0.5, 1);
-                scene.add(flashlight);
-                scene.add(flashlight.target);
+            renderer.render(scene, camera);
+        }
+        animate();
 
-                const controls = new THREE.PointerLockControls(camera, document.body);
-                scene.add(controls.getObject());
-
-                const blocker = document.getElementById('blocker');
-                blocker.addEventListener('click', () => controls.lock());
-                controls.addEventListener('lock', () => blocker.style.display = 'none');
-                controls.addEventListener('unlock', () => blocker.style.display = 'flex');
-
-                const moveState = { forward: false, backward: false, left: false, right: false, crouching: false };
-                
-                let currentSpeed = 40.0;
-                const STAND_HEIGHT = 10.0;
-                const CROUCH_HEIGHT = 4.0;
-
-                document.addEventListener('keydown', (e) => {
-                    if (e.code === 'KeyW' || e.code === 'ArrowUp') moveState.forward = true;
-                    if (e.code === 'KeyS' || e.code === 'ArrowDown') moveState.backward = true;
-                    if (e.code === 'KeyA' || e.code === 'ArrowLeft') moveState.left = true;
-                    if (e.code === 'KeyD' || e.code === 'ArrowRight') moveState.right = true;
-                    
-                    // Crouch mechanics trigger
-                    if (e.code === 'ControlLeft' || e.code === 'KeyC') {
-                        moveState.crouching = true;
-                        currentSpeed = 15.0; // Slow down when crouching
-                    }
-                });
-
-                document.addEventListener('keyup', (e) => {
-                    if (e.code === 'KeyW' || e.code === 'ArrowUp') moveState.forward = false;
-                    if (e.code === 'KeyS' || e.code === 'ArrowDown') moveState.backward = false;
-                    if (e.code === 'KeyA' || e.code === 'ArrowLeft') moveState.left = false;
-                    if (e.code === 'KeyD' || e.code === 'ArrowRight') moveState.right = false;
-                    
-                    if (e.code === 'ControlLeft' || e.code === 'KeyC') {
-                        moveState.crouching = false;
-                        currentSpeed = 40.0;
-                    }
-                });
-
-                // Configure GLTF Loader with the Draco Decompression module
-                const loader = new THREE.GLTFLoader();
-                const dracoLoader = new THREE.DRACOLoader();
-                // Pulls official standalone unpacker assets directly from reliable public repository CDN
-                dracoLoader.setDecoderPath('https:&#47;&#47;://gstatic.com&#47;draco&#47;versioned&#47;decoders&#47;1.5.6&#47;');
-                loader.setDRACOLoader(dracoLoader);
-
-                loader.load('BuzzardCaveA-v1.glb', function (gltf) {
-                    scene.add(gltf.scene);
-                    console.log('Draco-compressed cave model loaded successfully!');
-                }, undefined, function (error) {
-                    console.error('Error unpacking model assets:', error);
-                });
-
-                const clock = new THREE.Clock();
-                const velocity = new THREE.Vector3();
-
-                function animate() {
-                    requestAnimationFrame(animate);
-                    const deltaTime = clock.getDelta();
-
-                    if (controls.isLocked) {
-                        velocity.set(0, 0, 0);
-
-                        if (moveState.forward) velocity.z -= 1;
-                        if (moveState.backward) velocity.z += 1;
-                        if (moveState.left) velocity.x -= 1;
-                        if (moveState.right) velocity.x += 1;
-
-                        velocity.normalize();
-
-                        controls.moveForward(-velocity.z * currentSpeed * deltaTime);
-                        controls.moveRight(velocity.x * currentSpeed * deltaTime);
-
-                        // Smoothly transition player height position for crouches
-                        let targetHeight = moveState.crouching ? CROUCH_HEIGHT : STAND_HEIGHT;
-                        camera.position.y += (targetHeight - camera.position.y) * 0.15;
-                    }
-
-                    // Dynamically bind flashlight focus coordinates onto camera gaze
-                    flashlight.position.copy(camera.position);
-                    const vector = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
-                    flashlight.target.position.copy(camera.position).add(vector);
-
-                    renderer.render(scene, camera);
-                }
-                animate();
-
-                window.addEventListener('resize', () => {
-                    camera.aspect = window.innerWidth / window.innerHeight;
-                    camera.updateProjectionMatrix();
-                    renderer.setSize(window.innerWidth, window.innerHeight);
-                });
-            </script>
-        </body>
-        </html>
-    "></iframe>
-
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
 </body>
 </html>
