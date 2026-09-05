@@ -411,18 +411,24 @@ STANCE: STANDING | SIZE: 1.0x
                 }
             }
 
-            // Camera follows player from behind
+            // THIRD-PERSON CAMERA - Behind the avatar
             const cameraDistance = 5;
             const cameraHeight = 1.5;
             
-            const cameraOffsetX = Math.sin(yaw) * cameraDistance;
-            const cameraOffsetZ = -Math.cos(yaw) * cameraDistance;
+            // Position camera behind player based on yaw (looking direction)
+            const cameraPosX = playerGroup.position.x - Math.sin(yaw) * cameraDistance;
+            const cameraPosY = playerGroup.position.y + cameraHeight;
+            const cameraPosZ = playerGroup.position.z + Math.cos(yaw) * cameraDistance;
             
-            camera.position.x = playerGroup.position.x + cameraOffsetX;
-            camera.position.y = playerGroup.position.y + cameraHeight + Math.tan(pitch) * cameraDistance;
-            camera.position.z = playerGroup.position.z + cameraOffsetZ;
+            camera.position.set(cameraPosX, cameraPosY, cameraPosZ);
             
-            camera.lookAt(playerGroup.position.x, playerGroup.position.y + cameraHeight, playerGroup.position.z);
+            // Look at the player's head/upper body
+            const lookAtPoint = new THREE.Vector3(
+                playerGroup.position.x,
+                playerGroup.position.y + 0.5,
+                playerGroup.position.z
+            );
+            camera.lookAt(lookAtPoint);
 
             // Flashlight follows camera
             flashlight.position.copy(camera.position);
