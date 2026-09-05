@@ -45,13 +45,13 @@
             padding: 20px;
             border-radius: 8px;
             border: 1px solid #555;
-            z-index: 20; /* Layering fixed to float ABOVE the blocker instruction window when paused */
+            z-index: 20;
             width: 250px;
             display: flex;
             flex-direction: column;
             gap: 15px;
             pointer-events: auto;
-            cursor: default; /* Forces browser arrow pointer visibility */
+            cursor: default;
         }
         .control-group {
             display: flex;
@@ -204,7 +204,7 @@ STANCE: STANDING
         
         let verticalVelocity = 0;
         const GRAVITY = 32.0;
-        const COLLISION_RADIUS = 0.5; // Avatar collision sphere radius
+        const COLLISION_RADIUS = 0.5;
 
         const btnFly = document.getElementById('btn-fly');
         const btnWalk = document.getElementById('btn-walk');
@@ -304,7 +304,7 @@ STANCE: STANDING
             if (!caveGeometry) return false;
 
             const rays = [
-                currentPos.clone(), // Center
+                currentPos.clone(),
                 currentPos.clone().add(new THREE.Vector3(COLLISION_RADIUS * 0.7, 0, 0)),
                 currentPos.clone().add(new THREE.Vector3(-COLLISION_RADIUS * 0.7, 0, 0)),
                 currentPos.clone().add(new THREE.Vector3(0, COLLISION_RADIUS * 0.5, 0)),
@@ -328,7 +328,7 @@ STANCE: STANDING
 
         loader.load('BuzzardCaveA-v1.glb', function (gltf) {
             scene.add(gltf.scene);
-            caveGeometry = gltf.scene; // Store geometry for collision detection
+            caveGeometry = gltf.scene;
             console.log('Cave mesh loaded successfully. Collision detection enabled.');
         });
 
@@ -341,6 +341,7 @@ STANCE: STANDING
 
             if (controls.isLocked) {
                 moveVector.set(0, 0, 0);
+                const currentPos = controls.getObject().position;
 
                 if (isFlyMode) {
                     camera.getWorldDirection(lookDirection);
@@ -361,31 +362,29 @@ STANCE: STANDING
                     }
 
                     // Calculate new position
-                    const currentPos = controls.getObject().position.clone();
                     const newPos = currentPos.clone().addScaledVector(velocityVector, speedMultiplier * deltaTime);
 
                     // Check collision before moving
                     if (!checkCollisionMultiRay(currentPos, newPos, raycaster)) {
-                        controls.getObject().position.copy(newPos);
+                        currentPos.copy(newPos);
                     } else {
                         // Collision detected - try sliding along surface
-                        // Try moving along individual axes
                         const testX = currentPos.clone();
                         testX.x = newPos.x;
                         if (!checkCollisionMultiRay(currentPos, testX, raycaster)) {
-                            controls.getObject().position.x = newPos.x;
+                            currentPos.x = newPos.x;
                         }
 
                         const testY = currentPos.clone();
                         testY.y = newPos.y;
                         if (!checkCollisionMultiRay(currentPos, testY, raycaster)) {
-                            controls.getObject().position.y = newPos.y;
+                            currentPos.y = newPos.y;
                         }
 
                         const testZ = currentPos.clone();
                         testZ.z = newPos.z;
                         if (!checkCollisionMultiRay(currentPos, testZ, raycaster)) {
-                            controls.getObject().position.z = newPos.z;
+                            currentPos.z = newPos.z;
                         }
                     }
 
@@ -396,48 +395,44 @@ STANCE: STANDING
                         camera.rotateOnWorldAxis(rollAxis, rollAmount);
                     }
                 } else {
-                    // Walk mode with gravity and collision
+                    // Walk mode with gravity and collision - SIMPLIFIED
                     if (moveState.forward) moveVector.z -= 1;
                     if (moveState.backward) moveVector.z += 1;
                     if (moveState.left) moveVector.x -= 1;
                     if (moveState.right) moveVector.x += 1;
 
-                    moveVector.normalize();
-                    
-                    const currentPos = controls.getObject().position.clone();
+                    if (moveVector.lengthSq() > 0) {
+                        moveVector.normalize();
+                    }
+
                     const moveAmount = movementSpeed * deltaTime;
+                    const newHorizPos = currentPos.clone();
                     
-                    // Try forward/back movement
-                    const testForward = currentPos.clone();
-                    controls.moveForward(-moveVector.z * moveAmount);
-                    testForward.copy(controls.getObject().position);
-                    
-                    if (checkCollisionMultiRay(currentPos, testForward, raycaster)) {
-                        controls.getObject().position.copy(currentPos);
-                    } else {
-                        currentPos.copy(testForward);
+                    // Apply horizontal movement
+                    newHorizPos.x += moveVector.x * moveAmount;
+                    newHorizPos.z += moveVector.z * moveAmount;
+
+                    // Check horizontal collision
+                    if (!checkCollisionMultiRay(currentPos, newHorizPos, raycaster)) {
+                        currentPos.x = newHorizPos.x;
+                        currentPos.z = newHorizPos.z;
                     }
 
-                    // Try left/right movement
-                    const testSide = currentPos.clone();
-                    controls.moveRight(moveVector.x * moveAmount);
-                    testSide.copy(controls.getObject().position);
+                    // Apply gravity - simplified to prevent exponential growth
+                    const groundLevel = targetHeight;
                     
-                    if (checkCollisionMultiRay(currentPos, testSide, raycaster)) {
-                        controls.getObject().position.copy(currentPos);
-                    } else {
-                        currentPos.copy(testSide);
-                    }
-
-                    // Apply gravity
-                    if (currentPos.y > targetHeight) {
-                        verticalVelocity -= GRAVITY * deltaTime;
-                    } else {
+                    if (currentPos.y > groundLevel) {
+                        // Falling - accumulate gravity
+                        verticalVelocity = Math.min(verticalVelocity + GRAVITY * deltaTime, 50); // Cap terminal velocity
+                        currentPos.y -= verticalVelocity * deltaTime;
+                    } else if (currentPos.y < groundLevel) {
+                        // Below ground - snap to ground
+                        currentPos.y = groundLevel;
                         verticalVelocity = 0;
-                        currentPos.y = targetHeight;
+                    } else {
+                        // On ground
+                        verticalVelocity = 0;
                     }
-                    currentPos.y += verticalVelocity * deltaTime;
-                    controls.getObject().position.copy(currentPos);
                 }
             }
 
