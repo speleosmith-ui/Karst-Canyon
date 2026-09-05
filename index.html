@@ -118,7 +118,8 @@ line-height: 1.4;
 <strong>Move (3D Fly/Walk):</strong> WASD Keys<br/>
 <strong>Vertical Movement:</strong> SPACE (Up) / CTRL (Down)<br/>
 <strong>Roll (Barrel Roll):</strong> Q / E Keys<br/>
-<strong>Speed Boost:</strong> Hold SHIFT (2x)<br/><br/>
+            <strong>Speed Boost:</strong> Hold SHIFT<br/><br/>
+            <strong>Speed Boost:</strong> Hold SHIFT (2x)<br/><br/>
 <span style="color:#ffcc00; font-weight:bold;">Stance Adjustment Keys:</span><br/>
 <strong>1 Key:</strong> Stand/Walk Mode<br/>
 <strong>2 Key:</strong> Knee Crawl Mode (Smaller)<br/>
@@ -139,10 +140,10 @@ Press <strong>ESC</strong> to release mouse and adjust menu controls.
 <label id="lbl-brightness">Flashlight Intensity: 10.0</label>
 <input type="range" id="sld-brightness" class="slider" min="0" max="30" step="0.5" value="10">
 </div>
-<div class="control-group">
-<label id="lbl-ambient">Ambient Light: 0.3</label>
-<input type="range" id="sld-ambient" class="slider" min="0" max="1" step="0.1" value="0.3">
-</div>
+        <div class="control-group">
+            <label id="lbl-ambient">Ambient Light: 0.3</label>
+            <input type="range" id="sld-ambient" class="slider" min="0" max="1" step="0.1" value="0.3">
+        </div>
 <div class="control-group">
 <label id="lbl-size">Avatar Size: 1.0x</label>
 <input type="range" id="sld-size" class="slider" min="0.1" max="2" step="0.1" value="1">
@@ -151,6 +152,7 @@ Press <strong>ESC</strong> to release mouse and adjust menu controls.
 
 <div id="status-display">
 NAVIGATION: FLY MODE
+SPEED: 18.0 u/s | ALT: 2.0 m
 SPEED: 4.5 u/s | ALT: 2.0 m
 STANCE: STANDING | SIZE: 1.0x
 </div>
@@ -166,24 +168,25 @@ const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
 document.body.appendChild(renderer.domElement);
 
-// Enhanced lighting setup
-const ambientLight = new THREE.AmbientLight(0xffffff, 0.3);
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.05);
+        // Enhanced lighting setup
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.3);
 scene.add(ambientLight);
 
-// Add directional light for better surface definition
-const directionalLight = new THREE.DirectionalLight(0xffffff, 0.4);
-directionalLight.position.set(100, 100, 50);
-directionalLight.castShadow = true;
-scene.add(directionalLight);
+        // Add directional light for better surface definition
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 0.4);
+        directionalLight.position.set(100, 100, 50);
+        directionalLight.castShadow = true;
+        scene.add(directionalLight);
 
-// Add point lights for atmospheric effect
-const pointLight1 = new THREE.PointLight(0x6688ff, 0.3, 100);
-pointLight1.position.set(-50, 20, -50);
-scene.add(pointLight1);
+        // Add point lights for atmospheric effect
+        const pointLight1 = new THREE.PointLight(0x6688ff, 0.3, 100);
+        pointLight1.position.set(-50, 20, -50);
+        scene.add(pointLight1);
 
-const pointLight2 = new THREE.PointLight(0xff8866, 0.2, 80);
-pointLight2.position.set(50, 15, 50);
-scene.add(pointLight2);
+        const pointLight2 = new THREE.PointLight(0xff8866, 0.2, 80);
+        pointLight2.position.set(50, 15, 50);
+        scene.add(pointLight2);
 
 const flashlight = new THREE.SpotLight(0xffffff, 10, 100, Math.PI / 5, 0.5, 1);
 scene.add(flashlight);
@@ -203,9 +206,12 @@ let speedMultiplier = 1;
 let avatarSizeMultiplier = 1.0;
 
 const STANCES = {
-stand: { height: 2.0, speed: 4.5, label: 'STANDING' },
-crawl: { height: 0.9, speed: 2.5, label: 'KNEE CRAWL' },
-belly: { height: 0.3, speed: 1.2, label: 'TINY CRAWL' }
+            stand: { height: 2.0, speed: 18.0, label: 'STANDING' },
+            crawl: { height: 0.9, speed: 6.5, label: 'KNEE CRAWL' },
+            belly: { height: 0.3, speed: 2.2, label: 'TINY CRAWL' }
+            stand: { height: 2.0, speed: 4.5, label: 'STANDING' },
+            crawl: { height: 0.9, speed: 2.5, label: 'KNEE CRAWL' },
+            belly: { height: 0.3, speed: 1.2, label: 'TINY CRAWL' }
 };
 
 let targetHeight = STANCES.stand.height;
@@ -227,14 +233,13 @@ const sideDirection = new THREE.Vector3();
 
 let verticalVelocity = 0;
 const GRAVITY = 32.0;
-const FLOOR_LEVEL = 0;
 
 const btnFly = document.getElementById('btn-fly');
 const btnWalk = document.getElementById('btn-walk');
 const sldBrightness = document.getElementById('sld-brightness');
 const lblBrightness = document.getElementById('lbl-brightness');
-const sldAmbient = document.getElementById('sld-ambient');
-const lblAmbient = document.getElementById('lbl-ambient');
+        const sldAmbient = document.getElementById('sld-ambient');
+        const lblAmbient = document.getElementById('lbl-ambient');
 const sldSize = document.getElementById('sld-size');
 const lblSize = document.getElementById('lbl-size');
 const statusDisplay = document.getElementById('status-display');
@@ -247,11 +252,11 @@ flashlight.intensity = val;
 lblBrightness.innerText = `Flashlight Intensity: ${val.toFixed(1)}`;
 });
 
-sldAmbient.addEventListener('input', (e) => {
-const val = parseFloat(e.target.value);
-ambientLight.intensity = val;
-lblAmbient.innerText = `Ambient Light: ${val.toFixed(1)}`;
-});
+        sldAmbient.addEventListener('input', (e) => {
+            const val = parseFloat(e.target.value);
+            ambientLight.intensity = val;
+            lblAmbient.innerText = `Ambient Light: ${val.toFixed(1)}`;
+        });
 
 sldSize.addEventListener('input', (e) => {
 avatarSizeMultiplier = parseFloat(e.target.value);
@@ -273,7 +278,6 @@ verticalVelocity = 0;
 btnWalk.classList.add('active');
 btnFly.classList.remove('active');
 controls.getObject().position.y = STANCES[currentStance].height * avatarSizeMultiplier;
-verticalVelocity = 0;
 }
 updateStatusHUD();
 }
@@ -300,7 +304,8 @@ if (e.code === 'Space') moveState.moveUp = true;
 if (e.code === 'ControlLeft' || e.code === 'ControlRight') moveState.moveDown = true;
 if (e.code === 'KeyQ') moveState.rollLeft = true;
 if (e.code === 'KeyE') moveState.rollRight = true;
-if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') speedMultiplier = 2;
+            if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') speedMultiplier = 2.5;
+            if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') speedMultiplier = 2;
 
 if (e.code === 'Digit1') changeStance('stand');
 if (e.code === 'Digit2') changeStance('crawl');
@@ -346,89 +351,69 @@ requestAnimationFrame(animate);
 const deltaTime = Math.min(clock.getDelta(), 0.1);
 
 if (controls.isLocked) {
-                moveVector.set(0, 0, 0);
-                const currentPos = controls.getObject().position;
+moveVector.set(0, 0, 0);
+const currentPos = controls.getObject().position;
 
-                const controlObject = controls.getObject();
-                
 if (isFlyMode) {
 // FLY MODE - PURE FREE FLIGHT
-                    moveVector.set(0, 0, 0);
 camera.getWorldDirection(lookDirection);
 sideDirection.copy(lookDirection).cross(camera.up).normalize();
 
-@@ -363,7 +363,7 @@
+if (moveState.forward) moveVector.add(lookDirection);
+if (moveState.backward) moveVector.sub(lookDirection);
+if (moveState.left) moveVector.sub(sideDirection);
+if (moveState.right) moveVector.add(sideDirection);
+if (moveState.moveUp) moveVector.add(camera.up);
+if (moveState.moveDown) moveVector.sub(camera.up);
 
 if (moveVector.lengthSq() > 0) {
 moveVector.normalize();
-                        currentPos.addScaledVector(moveVector, movementSpeed * speedMultiplier * deltaTime);
-                        controlObject.position.addScaledVector(moveVector, movementSpeed * speedMultiplier * deltaTime);
+currentPos.addScaledVector(moveVector, movementSpeed * speedMultiplier * deltaTime);
 }
 
 // Handle roll rotation
-@@ -373,29 +373,56 @@
+if (moveState.rollLeft || moveState.rollRight) {
+const rollAxis = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+const rollAmount = (moveState.rollLeft ? 1 : -1) * 3 * deltaTime;
 camera.rotateOnWorldAxis(rollAxis, rollAmount);
 }
 } else {
-                    // WALK MODE - GRAVITY AND GROUND CONSTRAINT
-                    // WALK MODE - HORIZONTAL MOVEMENT + GRAVITY
-                    moveVector.set(0, 0, 0);
-                    
+// WALK MODE - GRAVITY AND GROUND CONSTRAINT
 if (moveState.forward) moveVector.z -= 1;
 if (moveState.backward) moveVector.z += 1;
 if (moveState.left) moveVector.x -= 1;
 if (moveState.right) moveVector.x += 1;
 
-                    moveVector.normalize();
-                    controls.moveForward(-moveVector.z * movementSpeed * speedMultiplier * deltaTime);
-                    controls.moveRight(moveVector.x * movementSpeed * speedMultiplier * deltaTime);
-                    if (moveVector.lengthSq() > 0) {
-                        moveVector.normalize();
-                    }
+moveVector.normalize();
+controls.moveForward(-moveVector.z * movementSpeed * speedMultiplier * deltaTime);
+controls.moveRight(moveVector.x * movementSpeed * speedMultiplier * deltaTime);
 
-                    // Get camera direction for forward/backward
-                    camera.getWorldDirection(lookDirection);
-                    lookDirection.y = 0; // Only horizontal direction
-                    lookDirection.normalize();
-                    
-                    sideDirection.copy(lookDirection).cross(new THREE.Vector3(0, 1, 0)).normalize();
+const floorLevel = 0;
 
-                    // Apply horizontal movement
-                    const horizontalMove = lookDirection
-                        .clone()
-                        .multiplyScalar(-moveVector.z * movementSpeed * speedMultiplier * deltaTime)
-                        .add(sideDirection.clone().multiplyScalar(moveVector.x * movementSpeed * speedMultiplier * deltaTime));
-
-                    // Apply gravity ALWAYS in walk mode
-                    controlObject.position.add(horizontalMove);
-
-                    // Apply gravity
-const groundLevel = FLOOR_LEVEL + targetHeight;
-
-                    if (currentPos.y > groundLevel) {
-                        // Falling - accelerate downward
-                    if (controlObject.position.y > groundLevel) {
-                        // Falling
-verticalVelocity += GRAVITY * deltaTime;
-                    } else if (controlObject.position.y < groundLevel) {
-                        // Below ground - reset
-                        verticalVelocity = 0;
-                        controlObject.position.y = groundLevel;
+if (currentPos.y > floorLevel + targetHeight) {
+verticalVelocity -= GRAVITY * deltaTime;
 } else {
-                        // At or below ground level - snap to ground
-                        // At ground level
 verticalVelocity = 0;
-                        currentPos.y = groundLevel;
+currentPos.y = floorLevel + targetHeight;
+}
+currentPos.y += verticalVelocity * deltaTime;
+}
 }
 
-                    currentPos.y -= verticalVelocity * deltaTime;
-                    // Apply vertical velocity
-                    controlObject.position.y -= verticalVelocity * deltaTime;
-                    
-                    // Final ground clamp
-                    if (controlObject.position.y < groundLevel) {
-                        controlObject.position.y = groundLevel;
-                        verticalVelocity = 0;
-                    }
+flashlight.position.copy(camera.position);
+const gazeDir = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+flashlight.target.position.copy(camera.position).add(gazeDir);
+
+updateStatusHUD();
+renderer.render(scene, camera);
 }
-}
+animate();
+
+window.addEventListener('resize', () => {
+camera.aspect = window.innerWidth / window.innerHeight;
+camera.updateProjectionMatrix();
+renderer.setSize(window.innerWidth, window.innerHeight);
+});
+</script>
+</body>
+</html>
