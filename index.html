@@ -95,12 +95,13 @@
             left: 20px;
             color: #00ff00;
             font-family: monospace;
-            font-size: 14px;
+            font-size: 12px;
             background: rgba(0,0,0,0.7);
             padding: 10px;
             border-radius: 4px;
             z-index: 5;
             pointer-events: none;
+            line-height: 1.4;
         }
     </style>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -114,7 +115,10 @@
         <div id="instructions">
             <span style="font-size:32px; font-weight:bold; color: #00baee;">Click to Enter Cave</span><br/><br/>
             <strong>Look Around:</strong> Move your Mouse<br/>
-            <strong>Move (3D Fly/Walk):</strong> WASD Keys<br/><br/>
+            <strong>Move (3D Fly/Walk):</strong> WASD Keys<br/>
+            <strong>Vertical Movement:</strong> SPACE (Up) / CTRL (Down)<br/>
+            <strong>Roll (Barrel Roll):</strong> Q / E Keys<br/>
+            <strong>Speed Boost:</strong> Hold SHIFT<br/><br/>
             <span style="color:#ffcc00; font-weight:bold;">Stance Adjustment Keys:</span><br/>
             <strong>1 Key:</strong> Stand/Walk Mode<br/>
             <strong>2 Key:</strong> Knee Crawl Mode (Slower)<br/>
@@ -137,7 +141,11 @@
         </div>
     </div>
 
-    <div id="status-display">NAVIGATION: FLY MODE | STANCE: STANDING</div>
+    <div id="status-display">
+NAVIGATION: FLY MODE
+SPEED: 18.0 u/s | ALT: 2.0 m
+STANCE: STANDING
+    </div>
 
     <script>
         const scene = new THREE.Scene();
@@ -167,6 +175,7 @@
 
         let isFlyMode = true;
         let currentStance = 'stand';
+        let speedMultiplier = 1;
 
         const STANCES = {
             stand: { height: 2.0, speed: 18.0, label: 'STANDING' },
@@ -177,8 +186,18 @@
         let targetHeight = STANCES.stand.height;
         let movementSpeed = STANCES.stand.speed;
 
-        const moveState = { forward: false, backward: false, left: false, right: false };
+        const moveState = { 
+            forward: false, 
+            backward: false, 
+            left: false, 
+            right: false,
+            moveUp: false,
+            moveDown: false,
+            rollLeft: false,
+            rollRight: false
+        };
         const moveVector = new THREE.Vector3();
+        const velocityVector = new THREE.Vector3();
         const lookDirection = new THREE.Vector3();
         const sideDirection = new THREE.Vector3();
         
@@ -217,7 +236,13 @@
         btnWalk.addEventListener('click', () => switchNavEngine(false));
 
         function updateStatusHUD() {
-            statusDisplay.innerText = `NAVIGATION: ${isFlyMode ? 'FLY MODE' : 'WALK MODE'} | STANCE: ${STANCES[currentStance].label}`;
+            const pos = controls.getObject().position;
+            const altitude = pos.y.toFixed(1);
+            const currentSpeed = (movementSpeed * speedMultiplier).toFixed(1);
+            statusDisplay.innerText = 
+                `NAVIGATION: ${isFlyMode ? 'FLY MODE' : 'WALK MODE'}\n` +
+                `SPEED: ${currentSpeed} u/s | ALT: ${altitude} m\n` +
+                `STANCE: ${STANCES[currentStance].label}`;
         }
 
         document.addEventListener('keydown', (e) => {
@@ -225,6 +250,11 @@
             if (e.code === 'KeyS') moveState.backward = true;
             if (e.code === 'KeyA') moveState.left = true;
             if (e.code === 'KeyD') moveState.right = true;
+            if (e.code === 'Space') moveState.moveUp = true;
+            if (e.code === 'ControlLeft' || e.code === 'ControlRight') moveState.moveDown = true;
+            if (e.code === 'KeyQ') moveState.rollLeft = true;
+            if (e.code === 'KeyE') moveState.rollRight = true;
+            if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') speedMultiplier = 2.5;
 
             if (e.code === 'Digit1') changeStance('stand');
             if (e.code === 'Digit2') changeStance('crawl');
@@ -236,6 +266,11 @@
             if (e.code === 'KeyS') moveState.backward = false;
             if (e.code === 'KeyA') moveState.left = false;
             if (e.code === 'KeyD') moveState.right = false;
+            if (e.code === 'Space') moveState.moveUp = false;
+            if (e.code === 'ControlLeft' || e.code === 'ControlRight') moveState.moveDown = false;
+            if (e.code === 'KeyQ') moveState.rollLeft = false;
+            if (e.code === 'KeyE') moveState.rollRight = false;
+            if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') speedMultiplier = 1;
         });
 
         function changeStance(stanceKey) {
@@ -272,10 +307,22 @@
                     if (moveState.backward) moveVector.sub(lookDirection);
                     if (moveState.left) moveVector.sub(sideDirection);
                     if (moveState.right) moveVector.add(sideDirection);
+                    if (moveState.moveUp) moveVector.add(camera.up);
+                    if (moveState.moveDown) moveVector.sub(camera.up);
 
                     if (moveVector.lengthSq() > 0) {
                         moveVector.normalize();
-                        controls.getObject().position.addScaledVector(moveVector, movementSpeed * deltaTime);
+                        velocityVector.lerp(moveVector, 0.1).multiplyScalar(movementSpeed);
+                    } else {
+                        velocityVector.multiplyScalar(0.9);
+                    }
+                    controls.getObject().position.addScaledVector(velocityVector, speedMultiplier * deltaTime);
+
+                    // Handle roll rotation
+                    if (moveState.rollLeft || moveState.rollRight) {
+                        const rollAxis = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+                        const rollAmount = (moveState.rollLeft ? 1 : -1) * 3 * deltaTime;
+                        camera.rotateOnWorldAxis(rollAxis, rollAmount);
                     }
                 } else {
                     if (moveState.forward) moveVector.z -= 1;
@@ -308,6 +355,7 @@
             const gazeDir = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
             flashlight.target.position.copy(camera.position).add(gazeDir);
 
+            updateStatusHUD();
             renderer.render(scene, camera);
         }
         animate();
