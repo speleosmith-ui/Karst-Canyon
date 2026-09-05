@@ -386,6 +386,10 @@ CAMERA: ORBIT OVERVIEW
 <script>
 const isTouchDevice = ('ontouchstart' in window || navigator.maxTouchPoints > 0);
 
+// --- Custom Coordinate Locations ---
+const PLAYER_SPAWN_POS = new THREE.Vector3(5.1, 8.0, -1.3);
+const VULTURE_SPAWN_POS = new THREE.Vector3(-2.9, 4.0, 1.1);
+
 // --- Scene Setup ---
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x05070a);
@@ -435,7 +439,6 @@ scene.add(proximityLight);
 // --- Procedural 3D Turkey Vulture ---
 let isVultureEnabled = true;
 const vultureGroup = new THREE.Group();
-let vultureSpawnPos = new THREE.Vector3(0, 0.5, -12);
 let vultureLeftWing = null;
 let vultureRightWing = null;
 let vultureHead = null;
@@ -509,7 +512,8 @@ function buildVultureModel() {
     vultureGroup.add(bone);
   }
 
-  vultureGroup.position.copy(vultureSpawnPos);
+  // Exact location given by user
+  vultureGroup.position.copy(VULTURE_SPAWN_POS);
   scene.add(vultureGroup);
 }
 
@@ -546,33 +550,6 @@ function triggerSlimeSplatter() {
   setTimeout(() => { overlay.style.opacity = '0'; }, 3800);
 }
 
-function placeNestInsideCaveMesh(mesh) {
-  if (!mesh || !caveBounds) return;
-  try {
-    mesh.updateMatrixWorld(true);
-    const rayDown = new THREE.Raycaster();
-    const downVec = new THREE.Vector3(0, -1, 0);
-
-    const targetX = (caveBounds.x || 30) * 0.15;
-    const targetZ = -(caveBounds.z || 30) * 0.32;
-    const targetY = (caveBounds.y || 5) + 2.0;
-
-    rayDown.set(new THREE.Vector3(targetX, targetY, targetZ), downVec);
-    rayDown.far = (caveBounds.y || 10) * 3.0;
-
-    const hits = rayDown.intersectObject(mesh, true);
-    if (hits.length > 0) {
-      const hit = hits[hits.length - 1];
-      vultureSpawnPos.set(hit.point.x, hit.point.y + 0.2, hit.point.z);
-    } else {
-      vultureSpawnPos.set(targetX, Math.max(0.4, (caveBounds.y || 5) * 0.2), targetZ);
-    }
-  } catch(e) {
-    vultureSpawnPos.set(0, 0.5, -12);
-  }
-  vultureGroup.position.copy(vultureSpawnPos);
-}
-
 // --- Procedural Audio Engine ---
 let audioCtx = null;
 let masterGain = null;
@@ -585,18 +562,27 @@ let breathState = 'inhale';
 let breathTimer = 0;
 
 function initCaveAudio() {
-  if (isAudioInitialized) return;
-  try {
-    const AudioContext = window.AudioContext || window.webkitAudioContext;
-    audioCtx = new AudioContext();
-    masterGain = audioCtx.createGain();
-    masterGain.gain.value = 0.7;
-    masterGain.connect(audioCtx.destination);
-    isAudioInitialized = true;
-  } catch(e) {
-    console.warn('Web Audio could not start:', e);
+  if (!audioCtx) {
+    try {
+      const AudioContext = window.AudioContext || window.webkitAudioContext;
+      audioCtx = new AudioContext();
+      masterGain = audioCtx.createGain();
+      masterGain.gain.value = 0.7;
+      masterGain.connect(audioCtx.destination);
+      isAudioInitialized = true;
+    } catch(e) {
+      console.warn('Web Audio error:', e);
+    }
+  }
+  if (audioCtx && audioCtx.state === 'suspended') {
+    audioCtx.resume();
   }
 }
+
+// Unlock audio on any global user interaction
+window.addEventListener('click', () => initCaveAudio(), { once: true });
+window.addEventListener('keydown', () => initCaveAudio(), { once: true });
+window.addEventListener('touchstart', () => initCaveAudio(), { once: true });
 
 function playVultureThroatHiss() {
   if (!isAudioEnabled || !audioCtx || audioCtx.state !== 'running') return;
@@ -708,7 +694,7 @@ function playCrawlScrapeSound() {
   filter.Q.setValueAtTime(2.2, now);
 
   const gain = audioCtx.createGain();
-  gain.gain.setValueAtTime(0.28 + Math.random() * 0.12, now);
+  gain.gain.setValueAtTime(0.32 + Math.random() * 0.14, now);
   gain.gain.exponentialRampToValueAtTime(0.001, now + dur);
 
   noise.connect(filter);
@@ -717,10 +703,11 @@ function playCrawlScrapeSound() {
   noise.start(now);
 }
 
+// Labored Crawling Heavy Breathing
 function playHeavyBreath(isInhale) {
   if (!isAudioEnabled || !audioCtx || audioCtx.state !== 'running') return;
   const now = audioCtx.currentTime;
-  const dur = isInhale ? 1.15 : 1.35;
+  const dur = isInhale ? 1.05 : 1.25;
   const bufferSize = Math.floor(audioCtx.sampleRate * dur);
   const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
   const data = buffer.getChannelData(0);
@@ -731,23 +718,23 @@ function playHeavyBreath(isInhale) {
     b0 = 0.99 * b0 + white * 0.05;
     b1 = 0.95 * b1 + white * 0.05;
     b2 = 0.85 * b2 + white * 0.1;
-    data[i] = (b0 + b1 + b2) * 0.35;
+    data[i] = (b0 + b1 + b2) * 0.45;
   }
 
   const noise = audioCtx.createBufferSource();
   noise.buffer = buffer;
   const filter = audioCtx.createBiquadFilter();
   filter.type = 'bandpass';
-  filter.frequency.setValueAtTime(isInhale ? 420 : 360, now);
-  filter.frequency.exponentialRampToValueAtTime(isInhale ? 580 : 230, now + dur);
-  filter.Q.setValueAtTime(1.8, now);
+  filter.frequency.setValueAtTime(isInhale ? 440 : 380, now);
+  filter.frequency.exponentialRampToValueAtTime(isInhale ? 620 : 220, now + dur);
+  filter.Q.setValueAtTime(1.6, now);
 
   const gain = audioCtx.createGain();
-  const peakVol = isInhale ? 0.22 : 0.28;
+  const peakVol = isInhale ? 0.35 : 0.42;
 
   if (isInhale) {
     gain.gain.setValueAtTime(0.001, now);
-    gain.gain.linearRampToValueAtTime(peakVol, now + dur * 0.7);
+    gain.gain.linearRampToValueAtTime(peakVol, now + dur * 0.65);
     gain.gain.exponentialRampToValueAtTime(0.001, now + dur);
   } else {
     gain.gain.setValueAtTime(0.01, now);
@@ -770,13 +757,13 @@ let activeCameraMode = 'orbit';
 let isPointerLocked = false;
 
 let eyeHeight = 1.60; 
-let baseMoveSpeed = 8.5; // Fast responsive default
+let baseMoveSpeed = 8.5; 
 let currentScaledSpeed = 8.5;
 
 const groundRaycaster = new THREE.Raycaster();
 const downVector = new THREE.Vector3(0, -1, 0);
 
-const playerPos = new THREE.Vector3(0, 3, 0);
+const playerPos = new THREE.Vector3().copy(PLAYER_SPAWN_POS);
 let yaw = 0;
 let pitch = 0;
 let speedMultiplier = 1;
@@ -838,9 +825,7 @@ sldSpeed.addEventListener('input', (e) => {
   recalcSpeed();
 });
 
-// Height & Dynamic Speed Calculation
 function recalcSpeed() {
-  // Moderate scaling: Standing = 100%, Crouch = ~75%, Crawl = ~45%, Micro = ~20%
   const ratio = Math.max(0.01, eyeHeight / 1.6);
   currentScaledSpeed = Math.max(1.0, baseMoveSpeed * (0.2 + 0.8 * ratio));
   updateStatusHUD();
@@ -872,7 +857,6 @@ btnPresetMicro.addEventListener('click', () => updateHeightAndSpeed(0.01));
 // Camera Mode Switcher
 function setCameraMode(mode) {
   initCaveAudio();
-  if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
 
   activeCameraMode = mode;
   btnModeOrbit.classList.toggle('active', mode === 'orbit');
@@ -909,7 +893,15 @@ function setCameraMode(mode) {
 btnModeOrbit.addEventListener('click', () => setCameraMode('orbit'));
 btnModeWalk.addEventListener('click', () => setCameraMode('walk'));
 btnModeFly.addEventListener('click', () => setCameraMode('fly'));
-btnEnterFPS.addEventListener('click', () => setCameraMode('walk'));
+
+// Enter Cave spawns at exact designated coordinates
+btnEnterFPS.addEventListener('click', () => {
+  playerPos.copy(PLAYER_SPAWN_POS);
+  yaw = 0;
+  pitch = 0;
+  setCameraMode('walk');
+});
+
 btnExitFPS.addEventListener('click', () => setCameraMode('orbit'));
 
 document.addEventListener('pointerlockchange', () => {
@@ -1135,7 +1127,7 @@ document.addEventListener('keydown', (e) => {
   if (e.code === 'KeyD') moveState.right = true;
   if (e.code === 'Space') moveState.moveUp = true;
   if (e.code === 'ControlLeft' || e.code === 'ControlRight') moveState.moveDown = true;
-  if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') speedMultiplier = 2.5; // Fast sprint
+  if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') speedMultiplier = 2.5;
   if (e.code === 'KeyF') setCameraMode(activeCameraMode === 'walk' ? 'fly' : 'walk');
 });
 document.addEventListener('keyup', (e) => {
@@ -1169,8 +1161,9 @@ btnToggleVulture.addEventListener('click', () => {
   btnToggleVulture.classList.toggle('active', isVultureEnabled);
 });
 
+// Teleport directly to the vulture nest
 btnTpVulture.addEventListener('click', () => {
-  playerPos.copy(vultureGroup.position).add(new THREE.Vector3(0, eyeHeight, 3.5));
+  playerPos.set(VULTURE_SPAWN_POS.x, VULTURE_SPAWN_POS.y + eyeHeight, VULTURE_SPAWN_POS.z + 3.0);
   yaw = Math.PI;
   pitch = -0.05;
   setCameraMode('walk');
@@ -1178,7 +1171,6 @@ btnTpVulture.addEventListener('click', () => {
 
 btnToggleAudio.addEventListener('click', () => {
   initCaveAudio();
-  if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
   isAudioEnabled = !isAudioEnabled;
   btnToggleAudio.innerText = `🔊 Audio: ${isAudioEnabled ? 'ON' : 'OFF'}`;
   btnToggleAudio.classList.toggle('active', isAudioEnabled);
@@ -1221,12 +1213,11 @@ function loadCaveModel(url, displayName) {
         applyMaterialStyle();
         scene.add(currentCaveMesh);
 
-        placeNestInsideCaveMesh(currentCaveMesh);
-
         gridHelper.position.y = 0;
         gridHelper.scale.set(Math.max(1, caveBounds.x * 0.04), 1, Math.max(1, caveBounds.z * 0.04));
 
-        playerPos.set(0, Math.max(1.5, caveBounds.y * 0.3), 0);
+        // Start at user specified entrance coordinates
+        playerPos.copy(PLAYER_SPAWN_POS);
         modelName = `${displayName} (${Math.round(caveBounds.x)}m × ${Math.round(caveBounds.y)}m × ${Math.round(caveBounds.z)}m)`;
         
         setCameraMode('orbit');
@@ -1332,7 +1323,7 @@ function animate() {
       const stepDist = currentScaledSpeed * speedMultiplier * deltaTime;
       playerPos.addScaledVector(moveVec, stepDist);
 
-      stepCycle += deltaTime * (isCrawling ? 7.0 : 10.0);
+      stepCycle += deltaTime * (isCrawling ? 6.5 : 9.5) * speedMultiplier;
 
       // Crawling scrape sound
       if (isCrawling) {
@@ -1348,7 +1339,7 @@ function animate() {
     // Heavy Labored Breathing while in Crawling stance (<1.0m)
     if (isCrawling && isAudioEnabled) {
       breathTimer += deltaTime;
-      const breathInterval = isMoving ? 1.45 : 2.2;
+      const breathInterval = isMoving ? 1.35 : 1.95;
       if (breathTimer >= breathInterval) {
         breathTimer = 0;
         playHeavyBreath(breathState === 'inhale');
@@ -1363,7 +1354,39 @@ function animate() {
       if (moveState.moveDown) playerPos.y -= currentScaledSpeed * speedMultiplier * deltaTime;
     }
 
-    // --- Vulture State Machine & Dynamic Response ---
+    // --- Dynamic Head Bobbing for Walking & Crawling ---
+    let bobY = 0;
+    let bobX = 0;
+    let bobRoll = 0;
+
+    if (isMoving && (activeCameraMode === 'walk' || activeCameraMode === 'fly')) {
+      if (isCrawling) {
+        // Crawling: Heavy shoulder heave & side-to-side crawl sway
+        bobY = Math.sin(stepCycle) * (Math.max(0.015, eyeHeight * 0.07));
+        bobX = Math.cos(stepCycle * 0.5) * 0.035;
+        bobRoll = Math.cos(stepCycle * 0.5) * 0.022;
+      } else {
+        // Walking: Step bounce & subtle lateral walking sway
+        bobY = Math.abs(Math.sin(stepCycle)) * 0.055;
+        bobX = Math.cos(stepCycle * 0.5) * 0.022;
+        bobRoll = Math.cos(stepCycle * 0.5) * 0.012;
+      }
+    } else {
+      // Idle breathing rise and fall
+      const idleTime = clock.getElapsedTime();
+      bobY = Math.sin(idleTime * (isCrawling ? 2.4 : 1.4)) * (isCrawling ? 0.01 : 0.004);
+    }
+
+    const rightHorizontal = new THREE.Vector3(Math.cos(yaw), 0, Math.sin(yaw)).normalize();
+    camera.position.copy(playerPos);
+    camera.position.y += bobY;
+    camera.position.addScaledVector(rightHorizontal, bobX);
+
+    const targetLook = camera.position.clone().add(lookDir);
+    camera.lookAt(targetLook);
+    camera.rotation.z += bobRoll;
+
+    // --- Vulture State Machine ---
     if (isVultureEnabled && vultureGroup && vultureHead && vultureLeftWing && vultureRightWing) {
       const distToVulture = playerPos.distanceTo(vultureGroup.position);
       
@@ -1459,21 +1482,6 @@ function animate() {
         vomitParticles.splice(i, 1);
       }
     }
-
-    // Natural crawl sway
-    let bobY = 0;
-    let bobRoll = 0;
-    if (isMoving && activeCameraMode === 'walk') {
-      const bobMagnitude = isCrawling ? (eyeHeight * 0.04) : 0.035;
-      bobY = Math.sin(stepCycle) * bobMagnitude;
-      bobRoll = Math.cos(stepCycle * 0.5) * 0.008;
-    }
-
-    camera.position.set(playerPos.x, playerPos.y + bobY, playerPos.z);
-    camera.rotation.z = bobRoll;
-
-    const targetLook = camera.position.clone().add(lookDir);
-    camera.lookAt(targetLook);
 
     // Headlamp follow
     spotCenter.position.copy(camera.position);
