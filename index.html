@@ -120,6 +120,9 @@ body, html {
   text-align: center;
   font-size: 12px;
 }
+.action-btn:hover {
+  background: #218838;
+}
 .primary-btn {
   background: #007acc;
   border: 1px solid #0098ff;
@@ -130,6 +133,96 @@ body, html {
   cursor: pointer;
   text-align: center;
   font-size: 13px;
+}
+.primary-btn:hover {
+  background: #0069d9;
+}
+
+/* --- Cave Selection Modal --- */
+.modal-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(4px);
+  z-index: 100;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  transition: opacity 0.2s ease;
+}
+.modal-overlay.hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+.modal-card {
+  background: #15181e;
+  border: 1px solid #444;
+  border-radius: 10px;
+  padding: 20px;
+  width: 320px;
+  max-width: 88%;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.8);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid #333;
+  padding-bottom: 8px;
+}
+.modal-header h3 {
+  margin: 0;
+  font-size: 16px;
+  color: #00ff88;
+}
+.modal-close-btn {
+  background: none;
+  border: none;
+  color: #aaa;
+  font-size: 18px;
+  cursor: pointer;
+}
+.modal-close-btn:hover {
+  color: white;
+}
+.cave-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 250px;
+  overflow-y: auto;
+}
+.cave-item-btn {
+  background: #202632;
+  border: 1px solid #3d4659;
+  color: white;
+  padding: 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  transition: background 0.15s, border-color 0.15s;
+}
+.cave-item-btn:hover {
+  background: #007acc;
+  border-color: #0098ff;
+}
+.cave-item-title {
+  font-size: 13px;
+  font-weight: bold;
+}
+.cave-item-file {
+  font-size: 11px;
+  color: #9ab;
+  font-family: monospace;
 }
 
 /* --- HUD & Banners --- */
@@ -257,6 +350,18 @@ body, html {
 <div id="vignette"></div>
 <input type="file" id="file-input" accept=".glb,.gltf">
 
+<!-- Cave Selection Modal -->
+<div id="cave-modal" class="modal-overlay hidden">
+  <div class="modal-card">
+    <div class="modal-header">
+      <h3>Select Cave Model</h3>
+      <button id="btn-close-modal" class="modal-close-btn">✕</button>
+    </div>
+    <div id="cave-list" class="cave-list"></div>
+    <button id="btn-upload-custom" class="action-btn" style="background:#4a5568; border-color:#718096; margin-top:5px;">📁 Choose Local File from Device</button>
+  </div>
+</div>
+
 <button id="btn-toggle-menu">⚙️ Menu</button>
 <button id="btn-exit-fps">✕ Exit 1st Person</button>
 
@@ -264,7 +369,7 @@ body, html {
 
 <div id="control-panel">
   <button id="btn-enter-fps" class="primary-btn">🎮 Enter Cave (Walk Mode)</button>
-  <button id="btn-load-file" class="action-btn">📂 Open Another GLB</button>
+  <button id="btn-open-modal" class="action-btn">📂 Select / Open Cave</button>
 
   <div class="control-group">
     <label>Navigation Mode</label>
@@ -337,8 +442,21 @@ CAMERA: ORBIT OVERVIEW
 <script>
 const isTouchDevice = ('ontouchstart' in window || navigator.maxTouchPoints > 0);
 
-// --- Custom Entrance Coordinate ---
-const PLAYER_SPAWN_POS = new THREE.Vector3(5.1, 8.0, -1.3);
+// --- List of Repository Caves ---
+const REPO_CAVES = [
+  {
+    title: "Buzzard Cave (v1)",
+    filename: "BuzzardCaveA-v1.glb",
+    spawn: new THREE.Vector3(5.1, 8.0, -1.3)
+  },
+  {
+    title: "Whirlpool Cave",
+    filename: "Whirlpool.glb",
+    spawn: new THREE.Vector3(0, 5.0, 0)
+  }
+];
+
+let activeSpawnPos = new THREE.Vector3().copy(REPO_CAVES[0].spawn);
 
 // --- Scene Setup ---
 const scene = new THREE.Scene();
@@ -403,7 +521,7 @@ let lastKnownFloorY = null;
 const groundRaycaster = new THREE.Raycaster();
 const downVector = new THREE.Vector3(0, -1, 0);
 
-const playerPos = new THREE.Vector3().copy(PLAYER_SPAWN_POS);
+const playerPos = new THREE.Vector3().copy(activeSpawnPos);
 let yaw = 0;
 let pitch = 0;
 let speedMultiplier = 1.0;
@@ -416,7 +534,12 @@ const btnToggleMenu = document.getElementById('btn-toggle-menu');
 const btnExitFPS = document.getElementById('btn-exit-fps');
 const mobileControls = document.getElementById('mobile-controls');
 const fileInput = document.getElementById('file-input');
-const btnLoadFile = document.getElementById('btn-load-file');
+const btnOpenModal = document.getElementById('btn-open-modal');
+const caveModal = document.getElementById('cave-modal');
+const btnCloseModal = document.getElementById('btn-close-modal');
+const caveListContainer = document.getElementById('cave-list');
+const btnUploadCustom = document.getElementById('btn-upload-custom');
+
 const btnEnterFPS = document.getElementById('btn-enter-fps');
 const btnResetView = document.getElementById('btn-reset-view');
 const btnModeOrbit = document.getElementById('btn-mode-orbit');
@@ -451,6 +574,37 @@ if (window.innerWidth < 768) {
 
 btnToggleMenu.addEventListener('click', () => controlPanel.classList.toggle('hidden'));
 controlPanel.addEventListener('click', (e) => e.stopPropagation());
+
+// --- Build Cave Selection Menu ---
+function buildCaveMenu() {
+  caveListContainer.innerHTML = '';
+  REPO_CAVES.forEach(cave => {
+    const btn = document.createElement('button');
+    btn.className = 'cave-item-btn';
+    btn.innerHTML = `
+      <span class="cave-item-title">${cave.title}</span>
+      <span class="cave-item-file">${cave.filename}</span>
+    `;
+    btn.addEventListener('click', () => {
+      activeSpawnPos.copy(cave.spawn);
+      loadCaveModel(cave.filename, cave.title);
+      caveModal.classList.add('hidden');
+    });
+    caveListContainer.appendChild(btn);
+  });
+}
+buildCaveMenu();
+
+btnOpenModal.addEventListener('click', () => caveModal.classList.remove('hidden'));
+btnCloseModal.addEventListener('click', () => caveModal.classList.add('hidden'));
+caveModal.addEventListener('click', (e) => {
+  if (e.target === caveModal) caveModal.classList.add('hidden');
+});
+
+btnUploadCustom.addEventListener('click', () => {
+  caveModal.classList.add('hidden');
+  fileInput.click();
+});
 
 // Speed Slider
 sldSpeed.addEventListener('input', (e) => {
@@ -551,7 +705,7 @@ btnModeWalk.addEventListener('click', () => setCameraMode('walk'));
 btnModeFly.addEventListener('click', () => setCameraMode('fly'));
 
 btnEnterFPS.addEventListener('click', () => {
-  playerPos.copy(PLAYER_SPAWN_POS);
+  playerPos.copy(activeSpawnPos);
   yaw = 0;
   pitch = 0;
   setCameraMode('walk');
@@ -564,15 +718,12 @@ btnEnterFPS.addEventListener('click', () => {
 
 btnExitFPS.addEventListener('click', () => setCameraMode('orbit'));
 
-// Pointer Lock Change listener
 document.addEventListener('pointerlockchange', () => {
   isPointerLocked = (document.pointerLockElement === renderer.domElement);
 });
 
-// Left click on canvas toggles mouse pointer in Walk / Fly mode
 renderer.domElement.addEventListener('click', (e) => {
   if (isTouchDevice || activeCameraMode === 'orbit') return;
-  
   if (!isPointerLocked) {
     renderer.domElement.requestPointerLock();
   } else {
@@ -789,7 +940,14 @@ function updateStatusHUD() {
 
 // Keyboard controls
 document.addEventListener('keydown', (e) => {
-  if (e.code === 'Escape') { if (activeCameraMode !== 'orbit') setCameraMode('orbit'); return; }
+  if (e.code === 'Escape') {
+    if (!caveModal.classList.contains('hidden')) {
+      caveModal.classList.add('hidden');
+      return;
+    }
+    if (activeCameraMode !== 'orbit') setCameraMode('orbit'); 
+    return; 
+  }
   if (e.code === 'KeyW') moveState.forward = true;
   if (e.code === 'KeyS') moveState.backward = true;
   if (e.code === 'KeyA') moveState.left = true;
@@ -818,9 +976,11 @@ document.addEventListener('mousemove', (e) => {
 });
 
 // File Loader handlers
-btnLoadFile.addEventListener('click', () => fileInput.click());
 fileInput.addEventListener('change', (e) => {
-  if (e.target.files[0]) loadCaveModel(URL.createObjectURL(e.target.files[0]), e.target.files[0].name);
+  if (e.target.files[0]) {
+    activeSpawnPos.set(0, 5, 0);
+    loadCaveModel(URL.createObjectURL(e.target.files[0]), e.target.files[0].name);
+  }
 });
 
 // GLTF Loader
@@ -858,7 +1018,7 @@ function loadCaveModel(url, displayName) {
         gridHelper.position.y = 0;
         gridHelper.scale.set(Math.max(1, caveBounds.x * 0.04), 1, Math.max(1, caveBounds.z * 0.04));
 
-        playerPos.copy(PLAYER_SPAWN_POS);
+        playerPos.copy(activeSpawnPos);
         modelName = `${displayName} (${Math.round(caveBounds.x)}m × ${Math.round(caveBounds.y)}m × ${Math.round(caveBounds.z)}m)`;
         
         setCameraMode('orbit');
@@ -883,8 +1043,8 @@ function loadCaveModel(url, displayName) {
   );
 }
 
-const DEFAULT_MODEL = 'BuzzardCaveA-v1.glb';
-loadCaveModel(DEFAULT_MODEL, DEFAULT_MODEL);
+// Initial Load
+loadCaveModel(REPO_CAVES[0].filename, REPO_CAVES[0].title);
 
 // --- Adaptive Floor Raycaster ---
 function snapToMeshFloor(deltaTime) {
