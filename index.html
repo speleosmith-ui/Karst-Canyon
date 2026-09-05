@@ -105,7 +105,6 @@
         }
     </style>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/PointerLockControls.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/DRACOLoader.js"></script>
 </head>
@@ -115,21 +114,22 @@
         <div id="instructions">
             <span style="font-size:32px; font-weight:bold; color: #00baee;">Click to Enter Cave</span><br/><br/>
             <strong>Look Around:</strong> Move your Mouse<br/>
-            <strong>Move (3D Fly/Walk):</strong> WASD Keys<br/>
-            <strong>Vertical Movement:</strong> SPACE (Up) / CTRL (Down)<br/>
-            <strong>Roll (Barrel Roll):</strong> Q / E Keys<br/>
+            <strong>Move Forward/Back:</strong> W / S Keys<br/>
+            <strong>Strafe Left/Right:</strong> A / D Keys<br/>
+            <strong>Vertical Movement (Fly Mode Only):</strong> SPACE (Up) / CTRL (Down)<br/>
             <strong>Speed Boost:</strong> Hold SHIFT (2x)<br/><br/>
-            <span style="color:#ffcc00; font-weight:bold;">Stance Adjustment Keys:</span><br/>
-            <strong>1 Key:</strong> Stand/Walk Mode<br/>
-            <strong>2 Key:</strong> Knee Crawl Mode (Smaller)<br/>
-            <strong>3 Key:</strong> Tiny Crawl Mode (Microscopic - fits through cracks!)<br/><br/>
+            <span style="color:#ffcc00; font-weight:bold;">Mode & Stance Adjustment:</span><br/>
+            <strong>F Key:</strong> Toggle Fly / Walk Mode<br/>
+            <strong>1 Key:</strong> Standing Posture<br/>
+            <strong>2 Key:</strong> Crouching Posture<br/>
+            <strong>3 Key:</strong> Crawling Posture<br/><br/>
             Press <strong>ESC</strong> to release mouse and adjust menu controls.
         </div>
     </div>
 
     <div id="control-panel">
         <div class="control-group">
-            <label>Navigation Engine Mode</label>
+            <label>Navigation Mode</label>
             <div class="btn-group">
                 <button id="btn-fly" class="toggle-btn active">Fly Mode</button>
                 <button id="btn-walk" class="toggle-btn">Walk Mode</button>
@@ -151,32 +151,31 @@
 
     <div id="status-display">
 NAVIGATION: FLY MODE
-SPEED: 4.5 u/s | ALT: 2.0 m
+SPEED: 4.5 u/s | VEL: 0.0
 STANCE: STANDING | SIZE: 1.0x
     </div>
 
     <script>
         const scene = new THREE.Scene();
         scene.background = new THREE.Color(0x020202);
+        scene.fog = new THREE.Fog(0x020202, 200, 1000);
 
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-        camera.position.set(0, 2, 5); 
 
         const renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true;
         document.body.appendChild(renderer.domElement);
 
-        // Enhanced lighting setup
+        // Enhanced lighting
         const ambientLight = new THREE.AmbientLight(0xffffff, 0.3);
         scene.add(ambientLight);
 
-        // Add directional light for better surface definition
         const directionalLight = new THREE.DirectionalLight(0xffffff, 0.4);
         directionalLight.position.set(100, 100, 50);
         directionalLight.castShadow = true;
         scene.add(directionalLight);
 
-        // Add point lights for atmospheric effect
         const pointLight1 = new THREE.PointLight(0x6688ff, 0.3, 100);
         pointLight1.position.set(-50, 20, -50);
         scene.add(pointLight1);
@@ -189,13 +188,45 @@ STANCE: STANDING | SIZE: 1.0x
         scene.add(flashlight);
         scene.add(flashlight.target);
 
-        const controls = new THREE.PointerLockControls(camera, document.body);
-        scene.add(controls.getObject());
+        // Create player avatar (simple humanoid)
+        const playerGroup = new THREE.Group();
+        scene.add(playerGroup);
 
+        // Body
+        const bodyGeom = new THREE.CapsuleGeometry(0.3, 1.2, 4, 8);
+        const bodyMat = new THREE.MeshStandardMaterial({ color: 0x4488cc });
+        const body = new THREE.Mesh(bodyGeom, bodyMat);
+        body.castShadow = true;
+        body.receiveShadow = true;
+        playerGroup.add(body);
+
+        // Head
+        const headGeom = new THREE.SphereGeometry(0.25, 8, 8);
+        const headMat = new THREE.MeshStandardMaterial({ color: 0xffcc99 });
+        const head = new THREE.Mesh(headGeom, headMat);
+        head.position.y = 0.9;
+        head.castShadow = true;
+        head.receiveShadow = true;
+        playerGroup.add(head);
+
+        playerGroup.position.set(0, 2, 5);
+
+        // Blocker and input
         const blocker = document.getElementById('blocker');
-        blocker.addEventListener('click', () => controls.lock());
-        controls.addEventListener('lock', () => blocker.style.display = 'none');
-        controls.addEventListener('unlock', () => blocker.style.display = 'flex');
+        let isLocked = false;
+        
+        blocker.addEventListener('click', () => {
+            document.body.requestPointerLock();
+            isLocked = true;
+            blocker.style.display = 'none';
+        });
+
+        document.addEventListener('pointerlockchange', () => {
+            isLocked = document.pointerLockElement === document.body;
+            if (!isLocked) {
+                blocker.style.display = 'flex';
+            }
+        });
 
         let isFlyMode = true;
         let currentStance = 'stand';
@@ -204,8 +235,8 @@ STANCE: STANDING | SIZE: 1.0x
 
         const STANCES = {
             stand: { height: 2.0, speed: 4.5, label: 'STANDING' },
-            crawl: { height: 0.9, speed: 2.5, label: 'KNEE CRAWL' },
-            belly: { height: 0.3, speed: 1.2, label: 'TINY CRAWL' }
+            crouch: { height: 1.2, speed: 2.5, label: 'CROUCHING' },
+            crawl: { height: 0.5, speed: 1.2, label: 'CRAWLING' }
         };
 
         let targetHeight = STANCES.stand.height;
@@ -217,17 +248,15 @@ STANCE: STANDING | SIZE: 1.0x
             left: false, 
             right: false,
             moveUp: false,
-            moveDown: false,
-            rollLeft: false,
-            rollRight: false
+            moveDown: false
         };
-        const moveVector = new THREE.Vector3();
-        const lookDirection = new THREE.Vector3();
-        const sideDirection = new THREE.Vector3();
-        
+
         let verticalVelocity = 0;
         const GRAVITY = 32.0;
         const FLOOR_LEVEL = 0;
+
+        let yaw = 0;
+        let pitch = 0;
 
         const btnFly = document.getElementById('btn-fly');
         const btnWalk = document.getElementById('btn-walk');
@@ -256,10 +285,8 @@ STANCE: STANDING | SIZE: 1.0x
         sldSize.addEventListener('input', (e) => {
             avatarSizeMultiplier = parseFloat(e.target.value);
             lblSize.innerText = `Avatar Size: ${avatarSizeMultiplier.toFixed(1)}x`;
-            
-            // Update stance heights based on size multiplier
             targetHeight = STANCES[currentStance].height * avatarSizeMultiplier;
-            controls.getObject().position.y = targetHeight;
+            playerGroup.scale.set(avatarSizeMultiplier, avatarSizeMultiplier, avatarSizeMultiplier);
             updateStatusHUD();
         });
 
@@ -272,7 +299,7 @@ STANCE: STANDING | SIZE: 1.0x
             } else {
                 btnWalk.classList.add('active');
                 btnFly.classList.remove('active');
-                controls.getObject().position.y = STANCES[currentStance].height * avatarSizeMultiplier;
+                playerGroup.position.y = STANCES[currentStance].height * avatarSizeMultiplier;
                 verticalVelocity = 0;
             }
             updateStatusHUD();
@@ -282,12 +309,12 @@ STANCE: STANDING | SIZE: 1.0x
         btnWalk.addEventListener('click', () => switchNavEngine(false));
 
         function updateStatusHUD() {
-            const pos = controls.getObject().position;
+            const pos = playerGroup.position;
             const altitude = pos.y.toFixed(1);
             const currentSpeed = (movementSpeed * speedMultiplier).toFixed(1);
             statusDisplay.innerText = 
                 `NAVIGATION: ${isFlyMode ? 'FLY MODE' : 'WALK MODE'}\n` +
-                `SPEED: ${currentSpeed} u/s | ALT: ${altitude} m\n` +
+                `SPEED: ${currentSpeed} u/s | VEL: ${Math.abs(verticalVelocity).toFixed(1)}\n` +
                 `STANCE: ${STANCES[currentStance].label} | SIZE: ${avatarSizeMultiplier.toFixed(1)}x`;
         }
 
@@ -298,13 +325,12 @@ STANCE: STANDING | SIZE: 1.0x
             if (e.code === 'KeyD') moveState.right = true;
             if (e.code === 'Space') moveState.moveUp = true;
             if (e.code === 'ControlLeft' || e.code === 'ControlRight') moveState.moveDown = true;
-            if (e.code === 'KeyQ') moveState.rollLeft = true;
-            if (e.code === 'KeyE') moveState.rollRight = true;
             if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') speedMultiplier = 2;
+            if (e.code === 'KeyF') switchNavEngine(!isFlyMode);
 
             if (e.code === 'Digit1') changeStance('stand');
-            if (e.code === 'Digit2') changeStance('crawl');
-            if (e.code === 'Digit3') changeStance('belly');
+            if (e.code === 'Digit2') changeStance('crouch');
+            if (e.code === 'Digit3') changeStance('crawl');
         });
 
         document.addEventListener('keyup', (e) => {
@@ -314,8 +340,6 @@ STANCE: STANDING | SIZE: 1.0x
             if (e.code === 'KeyD') moveState.right = false;
             if (e.code === 'Space') moveState.moveUp = false;
             if (e.code === 'ControlLeft' || e.code === 'ControlRight') moveState.moveDown = false;
-            if (e.code === 'KeyQ') moveState.rollLeft = false;
-            if (e.code === 'KeyE') moveState.rollRight = false;
             if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') speedMultiplier = 1;
         });
 
@@ -324,7 +348,7 @@ STANCE: STANDING | SIZE: 1.0x
             targetHeight = STANCES[stanceKey].height * avatarSizeMultiplier;
             movementSpeed = STANCES[stanceKey].speed;
             if (!isFlyMode) {
-                controls.getObject().position.y = targetHeight;
+                playerGroup.position.y = targetHeight;
             }
             updateStatusHUD();
         }
@@ -341,91 +365,66 @@ STANCE: STANDING | SIZE: 1.0x
 
         const clock = new THREE.Clock();
 
+        document.addEventListener('mousemove', (e) => {
+            if (!isLocked) return;
+            yaw -= e.movementX * 0.003;
+            pitch -= e.movementY * 0.003;
+            pitch = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, pitch));
+        });
+
         function animate() {
             requestAnimationFrame(animate);
             const deltaTime = Math.min(clock.getDelta(), 0.1);
 
-            if (controls.isLocked) {
-                const controlObject = controls.getObject();
-                
+            if (isLocked) {
+                const moveVector = new THREE.Vector3();
+                const forward = new THREE.Vector3(Math.sin(yaw), 0, -Math.cos(yaw));
+                const right = new THREE.Vector3(Math.cos(yaw), 0, Math.sin(yaw));
+
+                if (moveState.forward) moveVector.add(forward);
+                if (moveState.backward) moveVector.sub(forward);
+                if (moveState.left) moveVector.sub(right);
+                if (moveState.right) moveVector.add(right);
+
+                if (moveVector.lengthSq() > 0) {
+                    moveVector.normalize();
+                    playerGroup.position.addScaledVector(moveVector, movementSpeed * speedMultiplier * deltaTime);
+                }
+
                 if (isFlyMode) {
-                    // FLY MODE - PURE FREE FLIGHT
-                    moveVector.set(0, 0, 0);
-                    camera.getWorldDirection(lookDirection);
-                    sideDirection.copy(lookDirection).cross(camera.up).normalize();
-
-                    if (moveState.forward) moveVector.add(lookDirection);
-                    if (moveState.backward) moveVector.sub(lookDirection);
-                    if (moveState.left) moveVector.sub(sideDirection);
-                    if (moveState.right) moveVector.add(sideDirection);
-                    if (moveState.moveUp) moveVector.add(camera.up);
-                    if (moveState.moveDown) moveVector.sub(camera.up);
-
-                    if (moveVector.lengthSq() > 0) {
-                        moveVector.normalize();
-                        controlObject.position.addScaledVector(moveVector, movementSpeed * speedMultiplier * deltaTime);
-                    }
-
-                    // Handle roll rotation
-                    if (moveState.rollLeft || moveState.rollRight) {
-                        const rollAxis = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
-                        const rollAmount = (moveState.rollLeft ? 1 : -1) * 3 * deltaTime;
-                        camera.rotateOnWorldAxis(rollAxis, rollAmount);
-                    }
+                    // Fly mode vertical movement
+                    if (moveState.moveUp) playerGroup.position.y += movementSpeed * speedMultiplier * deltaTime;
+                    if (moveState.moveDown) playerGroup.position.y -= movementSpeed * speedMultiplier * deltaTime;
                 } else {
-                    // WALK MODE - HORIZONTAL MOVEMENT + GRAVITY
-                    moveVector.set(0, 0, 0);
-                    
-                    if (moveState.forward) moveVector.z -= 1;
-                    if (moveState.backward) moveVector.z += 1;
-                    if (moveState.left) moveVector.x -= 1;
-                    if (moveState.right) moveVector.x += 1;
-
-                    if (moveVector.lengthSq() > 0) {
-                        moveVector.normalize();
-                    }
-
-                    // Get camera direction for forward/backward
-                    camera.getWorldDirection(lookDirection);
-                    lookDirection.y = 0; // Only horizontal direction
-                    lookDirection.normalize();
-                    
-                    sideDirection.copy(lookDirection).cross(new THREE.Vector3(0, 1, 0)).normalize();
-
-                    // Apply horizontal movement
-                    const horizontalMove = lookDirection
-                        .clone()
-                        .multiplyScalar(-moveVector.z * movementSpeed * speedMultiplier * deltaTime)
-                        .add(sideDirection.clone().multiplyScalar(moveVector.x * movementSpeed * speedMultiplier * deltaTime));
-
-                    controlObject.position.add(horizontalMove);
-
-                    // Apply gravity
+                    // Walk mode gravity
                     const groundLevel = FLOOR_LEVEL + targetHeight;
                     
-                    if (controlObject.position.y > groundLevel) {
-                        // Falling
+                    if (playerGroup.position.y > groundLevel) {
                         verticalVelocity += GRAVITY * deltaTime;
-                    } else if (controlObject.position.y < groundLevel) {
-                        // Below ground - reset
+                        playerGroup.position.y -= verticalVelocity * deltaTime;
+                    } else if (playerGroup.position.y < groundLevel) {
+                        playerGroup.position.y = groundLevel;
                         verticalVelocity = 0;
-                        controlObject.position.y = groundLevel;
                     } else {
-                        // At ground level
-                        verticalVelocity = 0;
-                    }
-                    
-                    // Apply vertical velocity
-                    controlObject.position.y -= verticalVelocity * deltaTime;
-                    
-                    // Final ground clamp
-                    if (controlObject.position.y < groundLevel) {
-                        controlObject.position.y = groundLevel;
                         verticalVelocity = 0;
                     }
                 }
             }
 
+            // Camera follows player from behind
+            const cameraDistance = 5;
+            const cameraHeight = 1.5;
+            
+            const cameraOffsetX = Math.sin(yaw) * cameraDistance;
+            const cameraOffsetZ = -Math.cos(yaw) * cameraDistance;
+            
+            camera.position.x = playerGroup.position.x + cameraOffsetX;
+            camera.position.y = playerGroup.position.y + cameraHeight + Math.tan(pitch) * cameraDistance;
+            camera.position.z = playerGroup.position.z + cameraOffsetZ;
+            
+            camera.lookAt(playerGroup.position.x, playerGroup.position.y + cameraHeight, playerGroup.position.z);
+
+            // Flashlight follows camera
             flashlight.position.copy(camera.position);
             const gazeDir = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
             flashlight.target.position.copy(camera.position).add(gazeDir);
