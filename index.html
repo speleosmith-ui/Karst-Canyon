@@ -196,7 +196,7 @@ body, html {
   max-width: 60%;
 }
 
-/* --- Mobile Controls --- */
+/* --- Mobile Virtual Joystick & Touch Overlay --- */
 #mobile-controls {
   position: absolute;
   top: 0;
@@ -317,7 +317,12 @@ body, html {
   </div>
 
   <div class="control-group">
-    <label id="lbl-height">Height: 1.60 m | Speed: 5.5 m/s</label>
+    <label id="lbl-speed">Base Move Speed: 8.5 m/s</label>
+    <input type="range" id="sld-speed" class="slider" min="1.0" max="25.0" step="0.5" value="8.5">
+  </div>
+
+  <div class="control-group">
+    <label id="lbl-height">Explorer Height: 1.60 m</label>
     <input type="range" id="sld-height" class="slider" min="0.01" max="2.00" step="0.01" value="1.60">
     <div class="btn-group" style="margin-top: 4px;">
       <button id="btn-preset-stand" class="toggle-btn active">1.6m</button>
@@ -445,12 +450,10 @@ function buildVultureModel() {
   const beakMat = new THREE.MeshStandardMaterial({ color: 0xcca028, roughness: 0.35 });
   const eyeMat = new THREE.MeshBasicMaterial({ color: 0xff2200 });
 
-  // Body
   const body = new THREE.Mesh(new THREE.SphereGeometry(0.35, 12, 12), bodyMat);
   body.scale.set(0.85, 1.2, 0.9);
   vultureGroup.add(body);
 
-  // Neck & Head
   const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.14, 0.35, 8), skinMat);
   neck.position.set(0, 0.45, 0.15);
   neck.rotation.x = Math.PI / 6;
@@ -462,13 +465,11 @@ function buildVultureModel() {
   const headMesh = new THREE.Mesh(new THREE.SphereGeometry(0.16, 10, 10), skinMat);
   vultureHead.add(headMesh);
 
-  // Hooked Beak
   const beak = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.24, 6), beakMat);
   beak.position.set(0, -0.04, 0.18);
   beak.rotation.x = Math.PI / 2.2;
   vultureHead.add(beak);
 
-  // Reflective Eyes
   const leftEye = new THREE.Mesh(new THREE.SphereGeometry(0.035, 6, 6), eyeMat);
   leftEye.position.set(0.1, 0.05, 0.1);
   const rightEye = leftEye.clone();
@@ -478,7 +479,6 @@ function buildVultureModel() {
 
   vultureGroup.add(vultureHead);
 
-  // Left Wing
   vultureLeftWing = new THREE.Group();
   vultureLeftWing.position.set(0.28, 0.2, 0);
   const lWingMesh = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.06, 0.45), bodyMat);
@@ -486,7 +486,6 @@ function buildVultureModel() {
   vultureLeftWing.add(lWingMesh);
   vultureGroup.add(vultureLeftWing);
 
-  // Right Wing
   vultureRightWing = new THREE.Group();
   vultureRightWing.position.set(-0.28, 0.2, 0);
   const rWingMesh = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.06, 0.45), bodyMat);
@@ -494,7 +493,6 @@ function buildVultureModel() {
   vultureRightWing.add(rWingMesh);
   vultureGroup.add(vultureRightWing);
 
-  // Nest Sticks & Bones
   const nestMat = new THREE.MeshStandardMaterial({ color: 0x2b221d, roughness: 0.95 });
   const boneMat = new THREE.MeshStandardMaterial({ color: 0x8a8475, roughness: 0.8 });
 
@@ -548,16 +546,13 @@ function triggerSlimeSplatter() {
   setTimeout(() => { overlay.style.opacity = '0'; }, 3800);
 }
 
-// Fast & Safe Cave Floor Nest Positioning
 function placeNestInsideCaveMesh(mesh) {
   if (!mesh || !caveBounds) return;
-
   try {
     mesh.updateMatrixWorld(true);
     const rayDown = new THREE.Raycaster();
     const downVec = new THREE.Vector3(0, -1, 0);
 
-    // Sample an interior target coordinate in the deep section of the cave
     const targetX = (caveBounds.x || 30) * 0.15;
     const targetZ = -(caveBounds.z || 30) * 0.32;
     const targetY = (caveBounds.y || 5) + 2.0;
@@ -567,7 +562,6 @@ function placeNestInsideCaveMesh(mesh) {
 
     const hits = rayDown.intersectObject(mesh, true);
     if (hits.length > 0) {
-      // Pick the lowest/deepest interior floor hit
       const hit = hits[hits.length - 1];
       vultureSpawnPos.set(hit.point.x, hit.point.y + 0.2, hit.point.z);
     } else {
@@ -576,11 +570,10 @@ function placeNestInsideCaveMesh(mesh) {
   } catch(e) {
     vultureSpawnPos.set(0, 0.5, -12);
   }
-
   vultureGroup.position.copy(vultureSpawnPos);
 }
 
-// --- Procedural Audio Engine (Web Audio API) ---
+// --- Procedural Audio Engine ---
 let audioCtx = null;
 let masterGain = null;
 let isAudioEnabled = true;
@@ -644,7 +637,6 @@ function playRetchAndVomitSound() {
   if (!isAudioEnabled || !audioCtx || audioCtx.state !== 'running') return;
   const now = audioCtx.currentTime;
 
-  // Stage 1: Retch / Dry Heave
   const retchOsc = audioCtx.createOscillator();
   const retchGain = audioCtx.createGain();
   retchOsc.type = 'sawtooth';
@@ -666,7 +658,6 @@ function playRetchAndVomitSound() {
   retchOsc.start(now);
   retchOsc.stop(now + 0.45);
 
-  // Stage 2: Wet Regurgitation Spew & Splat
   const spewStart = now + 0.35;
   const dur = 0.85;
   const bufferSize = Math.floor(audioCtx.sampleRate * dur);
@@ -779,8 +770,8 @@ let activeCameraMode = 'orbit';
 let isPointerLocked = false;
 
 let eyeHeight = 1.60; 
-let baseMoveSpeed = 5.5; 
-let currentScaledSpeed = 5.5;
+let baseMoveSpeed = 8.5; // Fast responsive default
+let currentScaledSpeed = 8.5;
 
 const groundRaycaster = new THREE.Raycaster();
 const downVector = new THREE.Vector3(0, -1, 0);
@@ -807,6 +798,9 @@ const btnModeFly = document.getElementById('btn-mode-fly');
 
 const btnToggleVulture = document.getElementById('btn-toggle-vulture');
 const btnTpVulture = document.getElementById('btn-tp-vulture');
+
+const sldSpeed = document.getElementById('sld-speed');
+const lblSpeed = document.getElementById('lbl-speed');
 
 const sldHeight = document.getElementById('sld-height');
 const lblHeight = document.getElementById('lbl-height');
@@ -837,53 +831,36 @@ if (window.innerWidth < 768) {
 btnToggleMenu.addEventListener('click', () => controlPanel.classList.toggle('hidden'));
 controlPanel.addEventListener('click', (e) => e.stopPropagation());
 
-btnToggleVulture.addEventListener('click', () => {
-  isVultureEnabled = !isVultureEnabled;
-  vultureGroup.visible = isVultureEnabled;
-  btnToggleVulture.innerText = `🦅 Vulture: ${isVultureEnabled ? 'ON' : 'OFF'}`;
-  btnToggleVulture.classList.toggle('active', isVultureEnabled);
+// Speed Slider
+sldSpeed.addEventListener('input', (e) => {
+  baseMoveSpeed = parseFloat(e.target.value);
+  lblSpeed.innerText = `Base Move Speed: ${baseMoveSpeed.toFixed(1)} m/s`;
+  recalcSpeed();
 });
 
-btnTpVulture.addEventListener('click', () => {
-  playerPos.copy(vultureGroup.position).add(new THREE.Vector3(0, eyeHeight, 3.5));
-  yaw = Math.PI;
-  pitch = -0.05;
-  setCameraMode('walk');
-});
+// Height & Dynamic Speed Calculation
+function recalcSpeed() {
+  // Moderate scaling: Standing = 100%, Crouch = ~75%, Crawl = ~45%, Micro = ~20%
+  const ratio = Math.max(0.01, eyeHeight / 1.6);
+  currentScaledSpeed = Math.max(1.0, baseMoveSpeed * (0.2 + 0.8 * ratio));
+  updateStatusHUD();
+}
 
-// Audio Listeners
-btnToggleAudio.addEventListener('click', () => {
-  initCaveAudio();
-  if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
-  isAudioEnabled = !isAudioEnabled;
-  btnToggleAudio.innerText = `🔊 Audio: ${isAudioEnabled ? 'ON' : 'OFF'}`;
-  btnToggleAudio.classList.toggle('active', isAudioEnabled);
-  if (masterGain) masterGain.gain.value = isAudioEnabled ? parseFloat(sldVolume.value) : 0;
-});
-
-sldVolume.addEventListener('input', (e) => {
-  if (masterGain && isAudioEnabled) masterGain.gain.value = parseFloat(e.target.value);
-});
-
-// Height & Speed
 function updateHeightAndSpeed(val) {
   eyeHeight = parseFloat(val);
   sldHeight.value = eyeHeight.toFixed(2);
 
-  const normalized = Math.max(0.01, eyeHeight / 1.6);
-  currentScaledSpeed = Math.max(0.08, baseMoveSpeed * Math.pow(normalized, 0.85));
-
   const heightDisplay = eyeHeight < 0.1 
     ? `${(eyeHeight * 100).toFixed(1)} cm` 
     : `${eyeHeight.toFixed(2)} m`;
-  lblHeight.innerText = `Height: ${heightDisplay} | Speed: ${currentScaledSpeed.toFixed(2)} m/s`;
+  lblHeight.innerText = `Explorer Height: ${heightDisplay}`;
 
   btnPresetStand.classList.toggle('active', Math.abs(eyeHeight - 1.6) < 0.05);
   btnPresetCrouch.classList.toggle('active', Math.abs(eyeHeight - 0.8) < 0.05);
   btnPresetCrawl.classList.toggle('active', Math.abs(eyeHeight - 0.2) < 0.05);
   btnPresetMicro.classList.toggle('active', eyeHeight <= 0.02);
 
-  updateStatusHUD();
+  recalcSpeed();
 }
 
 sldHeight.addEventListener('input', (e) => updateHeightAndSpeed(e.target.value));
@@ -921,8 +898,8 @@ function setCameraMode(mode) {
         : '✈️ <b>Fly Mode:</b> Move in sight line';
     } else {
       helpToast.innerHTML = mode === 'walk'
-        ? '🚶 <b>Walk Mode:</b> W/A/S/D follows cave floor | ESC: Unlock'
-        : '✈️ <b>Fly Mode:</b> W moves in sight line | ESC: Unlock';
+        ? '🚶 <b>Walk Mode:</b> W/A/S/D follows cave floor | Shift: Sprint | ESC: Unlock'
+        : '✈️ <b>Fly Mode:</b> W moves in sight line | Shift: Sprint | ESC: Unlock';
       try { renderer.domElement.requestPointerLock(); } catch(e) {}
     }
   }
@@ -1145,7 +1122,7 @@ function updateStatusHUD() {
   const modeLabel = activeCameraMode === 'orbit' ? 'ORBIT' : (activeCameraMode === 'walk' ? `WALK [H:${heightStr}]` : 'FLY 3D');
   statusDisplay.innerHTML = 
     `MODEL: ${modelName}<br/>` +
-    `CAMERA: ${modeLabel} | SPEED: ${currentScaledSpeed.toFixed(2)} m/s<br/>` +
+    `CAMERA: ${modeLabel} | SPEED: ${currentScaledSpeed.toFixed(1)} m/s<br/>` +
     `POS: [X:${playerPos.x.toFixed(1)} Y:${playerPos.y.toFixed(1)} Z:${playerPos.z.toFixed(1)}]`;
 }
 
@@ -1158,7 +1135,7 @@ document.addEventListener('keydown', (e) => {
   if (e.code === 'KeyD') moveState.right = true;
   if (e.code === 'Space') moveState.moveUp = true;
   if (e.code === 'ControlLeft' || e.code === 'ControlRight') moveState.moveDown = true;
-  if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') speedMultiplier = 1.8;
+  if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') speedMultiplier = 2.5; // Fast sprint
   if (e.code === 'KeyF') setCameraMode(activeCameraMode === 'walk' ? 'fly' : 'walk');
 });
 document.addEventListener('keyup', (e) => {
@@ -1183,6 +1160,33 @@ document.addEventListener('mousemove', (e) => {
 btnLoadFile.addEventListener('click', () => fileInput.click());
 fileInput.addEventListener('change', (e) => {
   if (e.target.files[0]) loadCaveModel(URL.createObjectURL(e.target.files[0]), e.target.files[0].name);
+});
+
+btnToggleVulture.addEventListener('click', () => {
+  isVultureEnabled = !isVultureEnabled;
+  vultureGroup.visible = isVultureEnabled;
+  btnToggleVulture.innerText = `🦅 Vulture: ${isVultureEnabled ? 'ON' : 'OFF'}`;
+  btnToggleVulture.classList.toggle('active', isVultureEnabled);
+});
+
+btnTpVulture.addEventListener('click', () => {
+  playerPos.copy(vultureGroup.position).add(new THREE.Vector3(0, eyeHeight, 3.5));
+  yaw = Math.PI;
+  pitch = -0.05;
+  setCameraMode('walk');
+});
+
+btnToggleAudio.addEventListener('click', () => {
+  initCaveAudio();
+  if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+  isAudioEnabled = !isAudioEnabled;
+  btnToggleAudio.innerText = `🔊 Audio: ${isAudioEnabled ? 'ON' : 'OFF'}`;
+  btnToggleAudio.classList.toggle('active', isAudioEnabled);
+  if (masterGain) masterGain.gain.value = isAudioEnabled ? parseFloat(sldVolume.value) : 0;
+});
+
+sldVolume.addEventListener('input', (e) => {
+  if (masterGain && isAudioEnabled) masterGain.gain.value = parseFloat(e.target.value);
 });
 
 // GLTF Loader
@@ -1217,7 +1221,6 @@ function loadCaveModel(url, displayName) {
         applyMaterialStyle();
         scene.add(currentCaveMesh);
 
-        // Position Nest Inside Cave
         placeNestInsideCaveMesh(currentCaveMesh);
 
         gridHelper.position.y = 0;
@@ -1228,7 +1231,7 @@ function loadCaveModel(url, displayName) {
         
         setCameraMode('orbit');
         frameModel();
-        updateStatusHUD();
+        recalcSpeed();
       } catch(e) {
         console.error('Setup error:', e);
       }
@@ -1334,7 +1337,7 @@ function animate() {
       // Crawling scrape sound
       if (isCrawling) {
         stepTimer += deltaTime;
-        const crawlInterval = Math.max(0.28, 0.45 / Math.max(0.4, currentScaledSpeed));
+        const crawlInterval = Math.max(0.25, 0.45 / Math.max(0.5, currentScaledSpeed));
         if (stepTimer >= crawlInterval) {
           stepTimer = 0;
           playCrawlScrapeSound();
@@ -1437,7 +1440,7 @@ function animate() {
       }
     }
 
-    // --- Update Vomit Particles Physics ---
+    // Update Vomit Projectiles
     for (let i = vomitParticles.length - 1; i >= 0; i--) {
       const vp = vomitParticles[i];
       vp.velocity.y -= 9.8 * deltaTime;
@@ -1457,7 +1460,7 @@ function animate() {
       }
     }
 
-    // Natural crawl sway / head bobbing
+    // Natural crawl sway
     let bobY = 0;
     let bobRoll = 0;
     if (isMoving && activeCameraMode === 'walk') {
