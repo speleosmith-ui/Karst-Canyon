@@ -196,7 +196,7 @@ body, html {
   max-width: 60%;
 }
 
-/* --- Mobile Virtual Joystick & Touch Overlay --- */
+/* --- Mobile Controls --- */
 #mobile-controls {
   position: absolute;
   top: 0;
@@ -386,7 +386,7 @@ CAMERA: ORBIT OVERVIEW
 <script>
 const isTouchDevice = ('ontouchstart' in window || navigator.maxTouchPoints > 0);
 
-// --- Custom Coordinates ---
+// --- Coordinates ---
 const PLAYER_SPAWN_POS = new THREE.Vector3(5.1, 8.0, -1.3);
 const VULTURE_SPAWN_POS = new THREE.Vector3(-2.9, 4.0, 1.1);
 
@@ -436,7 +436,7 @@ scene.add(spotSpill.target);
 const proximityLight = new THREE.PointLight(0xffeacc, 0.8, 4, 1.5);
 scene.add(proximityLight);
 
-// --- Procedural 3D Turkey Vulture (Scaled to 50%) ---
+// --- Procedural 3D Turkey Vulture (0.5x Scale) ---
 let isVultureEnabled = true;
 const vultureGroup = new THREE.Group();
 let vultureLeftWing = null;
@@ -512,7 +512,6 @@ function buildVultureModel() {
     vultureGroup.add(bone);
   }
 
-  // Scaled down to half size (0.5x)
   vultureGroup.scale.set(0.5, 0.5, 0.5);
   vultureGroup.position.copy(VULTURE_SPAWN_POS);
   scene.add(vultureGroup);
@@ -551,13 +550,13 @@ function triggerSlimeSplatter() {
   setTimeout(() => { overlay.style.opacity = '0'; }, 3800);
 }
 
-// --- Procedural Audio Engine ---
+// --- Procedural Audio Engine (Breathing & Grunting Only) ---
 let audioCtx = null;
 let masterGain = null;
 let isAudioEnabled = true;
 let isAudioInitialized = false;
 
-let stepTimer = 0;
+let gruntTimer = 0;
 let stepCycle = 0;
 let breathState = 'inhale';
 let breathTimer = 0;
@@ -677,32 +676,37 @@ function playRetchAndVomitSound() {
   noise.start(spewStart);
 }
 
-function playCrawlScrapeSound() {
+// Procedural Crawling Physical Exertion Grunt
+function playCrawlGrunt() {
   if (!isAudioEnabled || !audioCtx || audioCtx.state !== 'running') return;
   const now = audioCtx.currentTime;
-  const dur = 0.24;
-  const bufferSize = Math.floor(audioCtx.sampleRate * dur);
-  const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
-  const data = buffer.getChannelData(0);
-  for (let i = 0; i < bufferSize; i++) data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (bufferSize * 0.4));
+  const dur = 0.22;
 
-  const noise = audioCtx.createBufferSource();
-  noise.buffer = buffer;
-  const filter = audioCtx.createBiquadFilter();
-  filter.type = 'bandpass';
-  filter.frequency.setValueAtTime(650 + Math.random() * 350, now);
-  filter.Q.setValueAtTime(2.2, now);
-
+  const osc = audioCtx.createOscillator();
   const gain = audioCtx.createGain();
-  gain.gain.setValueAtTime(0.32 + Math.random() * 0.14, now);
+  osc.type = 'sine';
+
+  const basePitch = 110 + Math.random() * 30;
+  osc.frequency.setValueAtTime(basePitch, now);
+  osc.frequency.linearRampToValueAtTime(basePitch - 25, now + dur);
+
+  const filter = audioCtx.createBiquadFilter();
+  filter.type = 'lowpass';
+  filter.frequency.setValueAtTime(220, now);
+
+  gain.gain.setValueAtTime(0.01, now);
+  gain.gain.linearRampToValueAtTime(0.24, now + 0.04);
   gain.gain.exponentialRampToValueAtTime(0.001, now + dur);
 
-  noise.connect(filter);
+  osc.connect(filter);
   filter.connect(gain);
   gain.connect(masterGain);
-  noise.start(now);
+
+  osc.start(now);
+  osc.stop(now + dur);
 }
 
+// Labored Crawling Heavy Breathing
 function playHeavyBreath(isInhale) {
   if (!isAudioEnabled || !audioCtx || audioCtx.state !== 'running') return;
   const now = audioCtx.currentTime;
@@ -817,6 +821,7 @@ if (window.innerWidth < 768) {
 btnToggleMenu.addEventListener('click', () => controlPanel.classList.toggle('hidden'));
 controlPanel.addEventListener('click', (e) => e.stopPropagation());
 
+// Speed Slider
 sldSpeed.addEventListener('input', (e) => {
   baseMoveSpeed = parseFloat(e.target.value);
   lblSpeed.innerText = `Base Move Speed: ${baseMoveSpeed.toFixed(1)} m/s`;
@@ -1157,7 +1162,6 @@ btnToggleVulture.addEventListener('click', () => {
   btnToggleVulture.classList.toggle('active', isVultureEnabled);
 });
 
-// Teleport 5.5m in front of nest so you can approach the 5m hissing zone
 btnTpVulture.addEventListener('click', () => {
   playerPos.set(VULTURE_SPAWN_POS.x, VULTURE_SPAWN_POS.y + eyeHeight, VULTURE_SPAWN_POS.z + 5.5);
   yaw = Math.PI;
@@ -1240,33 +1244,37 @@ function loadCaveModel(url, displayName) {
 const DEFAULT_MODEL = 'BuzzardCaveA-v1.glb';
 loadCaveModel(DEFAULT_MODEL, DEFAULT_MODEL);
 
-// --- Solid Floor Surface Raycaster (Prevents Sinking & Clipping) ---
+// --- Stable Ground Surface Raycaster (Never Teleports To Ceiling) ---
 function snapToMeshFloor(deltaTime) {
   if (!currentCaveMesh) return null;
 
-  // Raycast from well above the player position downwards
+  // Origin stays strictly inside personal head space (max 0.25m above feet in crawl mode)
   const rayOrigin = playerPos.clone();
-  rayOrigin.y += Math.max(0.6, eyeHeight * 1.5); 
+  rayOrigin.y += Math.min(0.25, Math.max(0.04, eyeHeight * 0.4)); 
   groundRaycaster.set(rayOrigin, downVector);
-  groundRaycaster.far = Math.max(4.0, eyeHeight * 4.0 + 2.0);
+  groundRaycaster.far = Math.max(1.5, eyeHeight + 1.2);
 
   const hits = groundRaycaster.intersectObject(currentCaveMesh, true);
   if (hits.length > 0) {
     let validHit = null;
     for (let i = 0; i < hits.length; i++) {
-      if (hits[i].distance > 0.001) {
-        validHit = hits[i];
+      const h = hits[i];
+      // Only accept upward-facing floor surfaces (reject ceilings)
+      if (h.point.y <= (playerPos.y + 0.3) && (!h.face || h.face.normal.y > 0.4)) {
+        validHit = h;
         break;
       }
     }
+
     if (validHit) {
       const targetY = validHit.point.y + eyeHeight;
-      // Solid Floor: Instantly snap up if beneath floor level
-      if (playerPos.y < targetY) {
-        playerPos.y = targetY;
-      } else {
-        // Smoothly glide down drops
-        playerPos.y = THREE.MathUtils.lerp(playerPos.y, targetY, Math.min(1.0, 20.0 * deltaTime));
+      const diffY = targetY - playerPos.y;
+
+      // Limit max climb step so you cannot teleport to overhead ceilings
+      if (diffY > 0 && diffY <= 0.6) {
+        playerPos.y = targetY; // Snappy climb
+      } else if (diffY <= 0) {
+        playerPos.y = THREE.MathUtils.lerp(playerPos.y, targetY, Math.min(1.0, 18.0 * deltaTime)); // Smooth descent
       }
       return validHit.point.y;
     }
@@ -1329,19 +1337,20 @@ function animate() {
 
       stepCycle += deltaTime * (isCrawling ? 6.5 : 9.5) * speedMultiplier;
 
+      // Crawling physical exertion grunts (No gravel scraping)
       if (isCrawling) {
-        stepTimer += deltaTime;
-        const crawlInterval = Math.max(0.25, 0.45 / Math.max(0.5, currentScaledSpeed));
-        if (stepTimer >= crawlInterval) {
-          stepTimer = 0;
-          playCrawlScrapeSound();
+        gruntTimer += deltaTime;
+        const gruntInterval = Math.max(0.7, 1.2 / Math.max(0.5, currentScaledSpeed));
+        if (gruntTimer >= gruntInterval) {
+          gruntTimer = 0;
+          playCrawlGrunt();
         }
       }
     }
 
     if (isCrawling && isAudioEnabled) {
       breathTimer += deltaTime;
-      const breathInterval = isMoving ? 1.35 : 1.95;
+      const breathInterval = isMoving ? 1.25 : 1.9;
       if (breathTimer >= breathInterval) {
         breathTimer = 0;
         playHeavyBreath(breathState === 'inhale');
@@ -1349,7 +1358,7 @@ function animate() {
       }
     }
 
-    // Apply Solid Ground Snapping
+    // Apply Ground Snapping
     let floorHitY = null;
     if (activeCameraMode === 'walk') {
       floorHitY = snapToMeshFloor(deltaTime);
@@ -1358,17 +1367,17 @@ function animate() {
       if (moveState.moveDown) playerPos.y -= currentScaledSpeed * speedMultiplier * deltaTime;
     }
 
-    // --- Dynamic Head Bobbing & Solid Ground Clamping ---
+    // --- Dynamic Head Bobbing ---
     let bobY = 0;
     let bobX = 0;
     let bobRoll = 0;
 
     if (isMoving && (activeCameraMode === 'walk' || activeCameraMode === 'fly')) {
       if (isCrawling) {
-        const maxBob = Math.min(0.04, eyeHeight * 0.25);
+        const maxBob = Math.min(0.03, eyeHeight * 0.2);
         bobY = Math.sin(stepCycle) * maxBob;
-        bobX = Math.cos(stepCycle * 0.5) * Math.min(0.02, eyeHeight * 0.2);
-        bobRoll = Math.cos(stepCycle * 0.5) * 0.015;
+        bobX = Math.cos(stepCycle * 0.5) * Math.min(0.018, eyeHeight * 0.15);
+        bobRoll = Math.cos(stepCycle * 0.5) * 0.012;
       } else {
         bobY = Math.abs(Math.sin(stepCycle)) * 0.05;
         bobX = Math.cos(stepCycle * 0.5) * 0.02;
@@ -1376,7 +1385,7 @@ function animate() {
       }
     } else {
       const idleTime = clock.getElapsedTime();
-      bobY = Math.sin(idleTime * (isCrawling ? 2.4 : 1.4)) * (isCrawling ? 0.008 : 0.003);
+      bobY = Math.sin(idleTime * (isCrawling ? 2.4 : 1.4)) * (isCrawling ? 0.006 : 0.003);
     }
 
     const rightHorizontal = new THREE.Vector3(Math.cos(yaw), 0, Math.sin(yaw)).normalize();
@@ -1384,12 +1393,10 @@ function animate() {
     camera.position.y += bobY;
     camera.position.addScaledVector(rightHorizontal, bobX);
 
-    // Strict Floor Collision: Camera position NEVER dips beneath solid floor
+    // Hard floor buffer: Camera NEVER passes below floor
     if (floorHitY !== null) {
-      const minCamY = floorHitY + Math.max(0.003, eyeHeight * 0.85);
-      if (camera.position.y < minCamY) {
-        camera.position.y = minCamY;
-      }
+      const minCamY = floorHitY + Math.max(0.002, eyeHeight * 0.8);
+      if (camera.position.y < minCamY) camera.position.y = minCamY;
     }
 
     const targetLook = camera.position.clone().add(lookDir);
@@ -1412,12 +1419,10 @@ function animate() {
         vultureLeftWing.rotation.z = Math.sin(clock.getElapsedTime() * 1.5) * 0.02;
         vultureRightWing.rotation.z = -Math.sin(clock.getElapsedTime() * 1.5) * 0.02;
 
-        // Stage 1: Warning Hiss starts at 5m away
         if (distToVulture <= 5.0 && distToVulture > 1.0) {
           vultureState = 'hissing';
           vultureTimer = 0;
         } else if (distToVulture <= 1.0 && distToVulture > 0.05) {
-          // Stage 2: Vomit attack triggers at 1m away
           vultureState = 'retching';
           vultureTimer = 0;
         }
