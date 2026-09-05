@@ -44,8 +44,8 @@ body, html {
   border-radius: 8px;
   border: 1px solid #444;
   z-index: 30;
-  width: 260px;
-  max-height: 80vh;
+  width: 270px;
+  max-height: 82vh;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
@@ -76,14 +76,14 @@ body, html {
 }
 .btn-group {
   display: flex;
-  gap: 5px;
+  gap: 4px;
 }
 .toggle-btn {
   flex: 1;
   background: #2b303c;
   border: 1px solid #4a5264;
   color: #ddd;
-  padding: 8px 4px;
+  padding: 7px 3px;
   cursor: pointer;
   border-radius: 4px;
   font-size: 11px;
@@ -263,11 +263,13 @@ body, html {
   </div>
 
   <div class="control-group">
-    <label>Explorer Stance (Walk Mode)</label>
-    <div class="btn-group">
-      <button id="btn-stance-stand" class="toggle-btn active">Stand (1.6m)</button>
-      <button id="btn-stance-crouch" class="toggle-btn">Crouch (1.0m)</button>
-      <button id="btn-stance-crawl" class="toggle-btn">Crawl (0.5m)</button>
+    <label id="lbl-height">Height: 1.60 m | Speed: 5.5 m/s</label>
+    <input type="range" id="sld-height" class="slider" min="0.01" max="2.00" step="0.01" value="1.60">
+    <div class="btn-group" style="margin-top: 4px;">
+      <button id="btn-preset-stand" class="toggle-btn active">1.6m</button>
+      <button id="btn-preset-crouch" class="toggle-btn">0.8m</button>
+      <button id="btn-preset-crawl" class="toggle-btn">0.2m</button>
+      <button id="btn-preset-micro" class="toggle-btn">1cm</button>
     </div>
   </div>
 
@@ -321,7 +323,8 @@ const isTouchDevice = ('ontouchstart' in window || navigator.maxTouchPoints > 0)
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x111418);
 
-const camera = new THREE.PerspectiveCamera(65, window.innerWidth / window.innerHeight, 0.01, 10000);
+// Near clipping set to 2mm (0.002m) so close 1cm crawling never clips the ground
+const camera = new THREE.PerspectiveCamera(65, window.innerWidth / window.innerHeight, 0.002, 10000);
 camera.position.set(0, 30, 50);
 
 const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: 'high-performance' });
@@ -337,7 +340,7 @@ const controls = new THREE.OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
 controls.dampingFactor = 0.08;
 controls.maxDistance = 1000;
-controls.minDistance = 0.1;
+controls.minDistance = 0.05;
 
 // Grid helper
 const gridHelper = new THREE.GridHelper(100, 50, 0x00baee, 0x2e3540);
@@ -367,8 +370,11 @@ let renderStyle = 'lit';
 let activeCameraMode = 'orbit'; // 'orbit', 'walk', 'fly'
 let isPointerLocked = false;
 
-// Stance and Ground Clamping
-let eyeHeight = 1.6; // 1.6m standing, 1.0m crouching, 0.5m crawling
+// Height & Dynamic Scaling Speed
+let eyeHeight = 1.60; 
+let baseMoveSpeed = 5.5; 
+let currentScaledSpeed = 5.5;
+
 const groundRaycaster = new THREE.Raycaster();
 const downVector = new THREE.Vector3(0, -1, 0);
 
@@ -376,7 +382,6 @@ const playerPos = new THREE.Vector3(0, 3, 0);
 let yaw = 0;
 let pitch = 0;
 let speedMultiplier = 1;
-const moveSpeed = 6.0;
 const moveState = { forward: false, backward: false, left: false, right: false, moveUp: false, moveDown: false };
 const joystickVector = new THREE.Vector2(0, 0);
 
@@ -392,9 +397,14 @@ const btnResetView = document.getElementById('btn-reset-view');
 const btnModeOrbit = document.getElementById('btn-mode-orbit');
 const btnModeWalk = document.getElementById('btn-mode-walk');
 const btnModeFly = document.getElementById('btn-mode-fly');
-const btnStanceStand = document.getElementById('btn-stance-stand');
-const btnStanceCrouch = document.getElementById('btn-stance-crouch');
-const btnStanceCrawl = document.getElementById('btn-stance-crawl');
+
+const sldHeight = document.getElementById('sld-height');
+const lblHeight = document.getElementById('lbl-height');
+const btnPresetStand = document.getElementById('btn-preset-stand');
+const btnPresetCrouch = document.getElementById('btn-preset-crouch');
+const btnPresetCrawl = document.getElementById('btn-preset-crawl');
+const btnPresetMicro = document.getElementById('btn-preset-micro');
+
 const btnRenderLit = document.getElementById('btn-render-lit');
 const btnRenderUnlit = document.getElementById('btn-render-unlit');
 const btnRenderWire = document.getElementById('btn-render-wire');
@@ -413,6 +423,34 @@ if (window.innerWidth < 768) {
 
 btnToggleMenu.addEventListener('click', () => controlPanel.classList.toggle('hidden'));
 controlPanel.addEventListener('click', (e) => e.stopPropagation());
+
+// Update Height and Dynamic Scaling Speed
+function updateHeightAndSpeed(val) {
+  eyeHeight = parseFloat(val);
+  sldHeight.value = eyeHeight.toFixed(2);
+
+  // Speed scales with height (1.6m = ~5.5m/s, down to 1cm = ~0.08m/s micro crawl)
+  const normalized = Math.max(0.01, eyeHeight / 1.6);
+  currentScaledSpeed = Math.max(0.08, baseMoveSpeed * Math.pow(normalized, 0.85));
+
+  const heightDisplay = eyeHeight < 0.1 
+    ? `${(eyeHeight * 100).toFixed(1)} cm` 
+    : `${eyeHeight.toFixed(2)} m`;
+  lblHeight.innerText = `Height: ${heightDisplay} | Speed: ${currentScaledSpeed.toFixed(2)} m/s`;
+
+  btnPresetStand.classList.toggle('active', Math.abs(eyeHeight - 1.6) < 0.05);
+  btnPresetCrouch.classList.toggle('active', Math.abs(eyeHeight - 0.8) < 0.05);
+  btnPresetCrawl.classList.toggle('active', Math.abs(eyeHeight - 0.2) < 0.05);
+  btnPresetMicro.classList.toggle('active', eyeHeight <= 0.02);
+
+  updateStatusHUD();
+}
+
+sldHeight.addEventListener('input', (e) => updateHeightAndSpeed(e.target.value));
+btnPresetStand.addEventListener('click', () => updateHeightAndSpeed(1.60));
+btnPresetCrouch.addEventListener('click', () => updateHeightAndSpeed(0.80));
+btnPresetCrawl.addEventListener('click', () => updateHeightAndSpeed(0.20));
+btnPresetMicro.addEventListener('click', () => updateHeightAndSpeed(0.01));
 
 // Mode Switcher
 function setCameraMode(mode) {
@@ -436,12 +474,12 @@ function setCameraMode(mode) {
       btnExitFPS.style.display = 'block';
       controlPanel.classList.add('hidden');
       helpToast.innerHTML = mode === 'walk' 
-        ? '🚶 <b>Walk Mode:</b> Follows cave floor automatically'
+        ? '🚶 <b>Walk Mode:</b> Follows floor contours'
         : '✈️ <b>Fly Mode:</b> Move in line of sight (Noclip)';
     } else {
       helpToast.innerHTML = mode === 'walk'
-        ? '🚶 <b>Walk Mode:</b> W/A/S/D hugs cave floor | 1, 2, 3: Stance | ESC: Unlock'
-        : '✈️ <b>Fly Mode:</b> W moves in line of sight | Space/Ctrl: Up/Down | ESC: Unlock';
+        ? '🚶 <b>Walk Mode:</b> W/A/S/D follows cave floor | Mouse: Look | ESC: Unlock'
+        : '✈️ <b>Fly Mode:</b> W moves into line of sight | Mouse: Look | ESC: Unlock';
       try { renderer.domElement.requestPointerLock(); } catch(e) {}
     }
   }
@@ -453,18 +491,6 @@ btnModeWalk.addEventListener('click', () => setCameraMode('walk'));
 btnModeFly.addEventListener('click', () => setCameraMode('fly'));
 btnEnterFPS.addEventListener('click', () => setCameraMode('walk'));
 btnExitFPS.addEventListener('click', () => setCameraMode('orbit'));
-
-// Stance Controls
-function setStance(h) {
-  eyeHeight = h;
-  btnStanceStand.classList.toggle('active', h === 1.6);
-  btnStanceCrouch.classList.toggle('active', h === 1.0);
-  btnStanceCrawl.classList.toggle('active', h === 0.5);
-  updateStatusHUD();
-}
-btnStanceStand.addEventListener('click', () => setStance(1.6));
-btnStanceCrouch.addEventListener('click', () => setStance(1.0));
-btnStanceCrawl.addEventListener('click', () => setStance(0.5));
 
 document.addEventListener('pointerlockchange', () => {
   isPointerLocked = (document.pointerLockElement === renderer.domElement);
@@ -491,7 +517,7 @@ function handleDoubleTap(clientX, clientY) {
 
 renderer.domElement.addEventListener('dblclick', (e) => handleDoubleTap(e.clientX, e.clientY));
 
-// Touch swipe look handling
+// Touch swipe look handling (Right half of screen)
 let touchLookId = null;
 let lastTouchX = 0;
 let lastTouchY = 0;
@@ -515,7 +541,8 @@ window.addEventListener('touchmove', (e) => {
     if (t.identifier === touchLookId) {
       const dx = t.clientX - lastTouchX;
       const dy = t.clientY - lastTouchY;
-      yaw -= dx * 0.005;
+      // Fixed: Swiping right turns camera right
+      yaw += dx * 0.005;
       pitch -= dy * 0.005;
       pitch = Math.max(-Math.PI / 2.05, Math.min(Math.PI / 2.05, pitch));
       lastTouchX = t.clientX;
@@ -671,11 +698,11 @@ btnResetView.addEventListener('click', () => {
 });
 
 function updateStatusHUD() {
-  const stanceLabel = eyeHeight === 1.6 ? 'STANDING' : (eyeHeight === 1.0 ? 'CROUCHING' : 'CRAWLING');
-  const modeLabel = activeCameraMode === 'orbit' ? 'ORBIT' : (activeCameraMode === 'walk' ? `WALK (${stanceLabel})` : 'FLY 3D');
+  const heightStr = eyeHeight < 0.1 ? `${(eyeHeight * 100).toFixed(1)}cm` : `${eyeHeight.toFixed(2)}m`;
+  const modeLabel = activeCameraMode === 'orbit' ? 'ORBIT' : (activeCameraMode === 'walk' ? `WALK [H:${heightStr}]` : 'FLY 3D');
   statusDisplay.innerHTML = 
     `MODEL: ${modelName}<br/>` +
-    `CAMERA: ${modeLabel} | STYLE: ${renderStyle.toUpperCase()}<br/>` +
+    `CAMERA: ${modeLabel} | SPEED: ${currentScaledSpeed.toFixed(2)} m/s<br/>` +
     `POS: [X:${playerPos.x.toFixed(1)} Y:${playerPos.y.toFixed(1)} Z:${playerPos.z.toFixed(1)}]`;
 }
 
@@ -690,10 +717,6 @@ document.addEventListener('keydown', (e) => {
   if (e.code === 'ControlLeft' || e.code === 'ControlRight') moveState.moveDown = true;
   if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') speedMultiplier = 2.0;
   if (e.code === 'KeyF') setCameraMode(activeCameraMode === 'walk' ? 'fly' : 'walk');
-  
-  if (e.code === 'Digit1') setStance(1.6);
-  if (e.code === 'Digit2') setStance(1.0);
-  if (e.code === 'Digit3') setStance(0.5);
 });
 document.addEventListener('keyup', (e) => {
   if (e.code === 'KeyW') moveState.forward = false;
@@ -705,10 +728,10 @@ document.addEventListener('keyup', (e) => {
   if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') speedMultiplier = 1;
 });
 
-// Mouse Look
+// Fixed Desktop Mouse Look (Moving mouse right turns camera right)
 document.addEventListener('mousemove', (e) => {
   if (!isPointerLocked) return;
-  yaw -= e.movementX * 0.0025;
+  yaw += e.movementX * 0.0025;
   pitch -= e.movementY * 0.0025;
   pitch = Math.max(-Math.PI / 2.05, Math.min(Math.PI / 2.05, pitch));
 });
@@ -778,29 +801,26 @@ function loadCaveModel(url, displayName) {
 const DEFAULT_MODEL = 'BuzzardCaveA-v1.glb';
 loadCaveModel(DEFAULT_MODEL, DEFAULT_MODEL);
 
-// --- Surface Raycaster / Ground Snapping ---
+// --- Surface Raycaster / Ground Snapping (Supports 2m down to 1cm) ---
 function snapToMeshFloor(deltaTime) {
   if (!currentCaveMesh) return;
 
-  // Raycast from slightly above eye height downwards
   const rayOrigin = playerPos.clone();
-  rayOrigin.y += 1.0; 
+  rayOrigin.y += Math.max(0.2, eyeHeight * 0.8); 
   groundRaycaster.set(rayOrigin, downVector);
-  groundRaycaster.far = 6.0; // Check up to 6m below
+  groundRaycaster.far = Math.max(3.0, eyeHeight * 4.0);
 
   const hits = groundRaycaster.intersectObject(currentCaveMesh, true);
   if (hits.length > 0) {
-    // Find closest ground hit
     let validHit = null;
     for (let i = 0; i < hits.length; i++) {
-      if (hits[i].distance > 0.05) {
+      if (hits[i].distance > 0.002) {
         validHit = hits[i];
         break;
       }
     }
     if (validHit) {
       const targetY = validHit.point.y + eyeHeight;
-      // Smoothly glide up and down slopes
       playerPos.y = THREE.MathUtils.lerp(playerPos.y, targetY, Math.min(1.0, 14.0 * deltaTime));
     }
   }
@@ -817,6 +837,7 @@ function animate() {
     controls.update();
     camLight.position.copy(camera.position);
   } else {
+    // 3D Look Direction
     const lookDir = new THREE.Vector3(
       Math.sin(yaw) * Math.cos(pitch),
       Math.sin(pitch),
@@ -826,7 +847,7 @@ function animate() {
     let forward, right;
 
     if (activeCameraMode === 'fly') {
-      // Fly 3D: Moves directly into sight line
+      // Fly 3D: W moves directly into sight line
       forward = lookDir.clone();
       const worldUp = new THREE.Vector3(0, 1, 0);
       right = new THREE.Vector3().crossVectors(forward, worldUp).normalize();
@@ -834,7 +855,7 @@ function animate() {
         right = new THREE.Vector3(Math.cos(yaw), 0, Math.sin(yaw));
       }
     } else {
-      // Walk: Moves strictly on horizontal ground plane
+      // Walk: Moves horizontally across cave floor
       forward = new THREE.Vector3(Math.sin(yaw), 0, -Math.cos(yaw)).normalize();
       right = new THREE.Vector3(Math.cos(yaw), 0, Math.sin(yaw)).normalize();
     }
@@ -853,16 +874,14 @@ function animate() {
 
     if (moveVec.lengthSq() > 0) {
       moveVec.normalize();
-      playerPos.addScaledVector(moveVec, moveSpeed * speedMultiplier * deltaTime);
+      playerPos.addScaledVector(moveVec, currentScaledSpeed * speedMultiplier * deltaTime);
     }
 
     if (activeCameraMode === 'walk') {
-      // Stick to cave floor contours
       snapToMeshFloor(deltaTime);
     } else {
-      // Fly mode manual vertical adjustment
-      if (moveState.moveUp) playerPos.y += moveSpeed * speedMultiplier * deltaTime;
-      if (moveState.moveDown) playerPos.y -= moveSpeed * speedMultiplier * deltaTime;
+      if (moveState.moveUp) playerPos.y += currentScaledSpeed * speedMultiplier * deltaTime;
+      if (moveState.moveDown) playerPos.y -= currentScaledSpeed * speedMultiplier * deltaTime;
     }
 
     camera.position.copy(playerPos);
