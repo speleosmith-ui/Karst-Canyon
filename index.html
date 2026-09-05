@@ -118,7 +118,7 @@
             <strong>Move (3D Fly/Walk):</strong> WASD Keys<br/>
             <strong>Vertical Movement:</strong> SPACE (Up) / CTRL (Down)<br/>
             <strong>Roll (Barrel Roll):</strong> Q / E Keys<br/>
-            <strong>Speed Boost:</strong> Hold SHIFT<br/><br/>
+            <strong>Speed Boost:</strong> Hold SHIFT (2x)<br/><br/>
             <span style="color:#ffcc00; font-weight:bold;">Stance Adjustment Keys:</span><br/>
             <strong>1 Key:</strong> Stand/Walk Mode<br/>
             <strong>2 Key:</strong> Knee Crawl Mode (Smaller)<br/>
@@ -140,6 +140,10 @@
             <input type="range" id="sld-brightness" class="slider" min="0" max="30" step="0.5" value="10">
         </div>
         <div class="control-group">
+            <label id="lbl-ambient">Ambient Light: 0.3</label>
+            <input type="range" id="sld-ambient" class="slider" min="0" max="1" step="0.1" value="0.3">
+        </div>
+        <div class="control-group">
             <label id="lbl-size">Avatar Size: 1.0x</label>
             <input type="range" id="sld-size" class="slider" min="0.1" max="2" step="0.1" value="1">
         </div>
@@ -147,7 +151,7 @@
 
     <div id="status-display">
 NAVIGATION: FLY MODE
-SPEED: 18.0 u/s | ALT: 2.0 m
+SPEED: 4.5 u/s | ALT: 2.0 m
 STANCE: STANDING | SIZE: 1.0x
     </div>
 
@@ -162,8 +166,24 @@ STANCE: STANDING | SIZE: 1.0x
         renderer.setSize(window.innerWidth, window.innerHeight);
         document.body.appendChild(renderer.domElement);
 
-        const ambientLight = new THREE.AmbientLight(0xffffff, 0.05);
+        // Enhanced lighting setup
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.3);
         scene.add(ambientLight);
+
+        // Add directional light for better surface definition
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 0.4);
+        directionalLight.position.set(100, 100, 50);
+        directionalLight.castShadow = true;
+        scene.add(directionalLight);
+
+        // Add point lights for atmospheric effect
+        const pointLight1 = new THREE.PointLight(0x6688ff, 0.3, 100);
+        pointLight1.position.set(-50, 20, -50);
+        scene.add(pointLight1);
+
+        const pointLight2 = new THREE.PointLight(0xff8866, 0.2, 80);
+        pointLight2.position.set(50, 15, 50);
+        scene.add(pointLight2);
 
         const flashlight = new THREE.SpotLight(0xffffff, 10, 100, Math.PI / 5, 0.5, 1);
         scene.add(flashlight);
@@ -183,9 +203,9 @@ STANCE: STANDING | SIZE: 1.0x
         let avatarSizeMultiplier = 1.0;
 
         const STANCES = {
-            stand: { height: 2.0, speed: 18.0, label: 'STANDING' },
-            crawl: { height: 0.9, speed: 6.5, label: 'KNEE CRAWL' },
-            belly: { height: 0.3, speed: 2.2, label: 'TINY CRAWL' }
+            stand: { height: 2.0, speed: 4.5, label: 'STANDING' },
+            crawl: { height: 0.9, speed: 2.5, label: 'KNEE CRAWL' },
+            belly: { height: 0.3, speed: 1.2, label: 'TINY CRAWL' }
         };
 
         let targetHeight = STANCES.stand.height;
@@ -212,6 +232,8 @@ STANCE: STANDING | SIZE: 1.0x
         const btnWalk = document.getElementById('btn-walk');
         const sldBrightness = document.getElementById('sld-brightness');
         const lblBrightness = document.getElementById('lbl-brightness');
+        const sldAmbient = document.getElementById('sld-ambient');
+        const lblAmbient = document.getElementById('lbl-ambient');
         const sldSize = document.getElementById('sld-size');
         const lblSize = document.getElementById('lbl-size');
         const statusDisplay = document.getElementById('status-display');
@@ -222,6 +244,12 @@ STANCE: STANDING | SIZE: 1.0x
             const val = parseFloat(e.target.value);
             flashlight.intensity = val;
             lblBrightness.innerText = `Flashlight Intensity: ${val.toFixed(1)}`;
+        });
+
+        sldAmbient.addEventListener('input', (e) => {
+            const val = parseFloat(e.target.value);
+            ambientLight.intensity = val;
+            lblAmbient.innerText = `Ambient Light: ${val.toFixed(1)}`;
         });
 
         sldSize.addEventListener('input', (e) => {
@@ -270,7 +298,7 @@ STANCE: STANDING | SIZE: 1.0x
             if (e.code === 'ControlLeft' || e.code === 'ControlRight') moveState.moveDown = true;
             if (e.code === 'KeyQ') moveState.rollLeft = true;
             if (e.code === 'KeyE') moveState.rollRight = true;
-            if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') speedMultiplier = 2.5;
+            if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') speedMultiplier = 2;
 
             if (e.code === 'Digit1') changeStance('stand');
             if (e.code === 'Digit2') changeStance('crawl');
