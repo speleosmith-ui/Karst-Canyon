@@ -46,7 +46,7 @@
             border-radius: 8px;
             border: 1px solid #555;
             z-index: 20;
-            width: 250px;
+            width: 280px;
             display: flex;
             flex-direction: column;
             gap: 15px;
@@ -121,8 +121,8 @@
             <strong>Speed Boost:</strong> Hold SHIFT<br/><br/>
             <span style="color:#ffcc00; font-weight:bold;">Stance Adjustment Keys:</span><br/>
             <strong>1 Key:</strong> Stand/Walk Mode<br/>
-            <strong>2 Key:</strong> Knee Crawl Mode (Slower)<br/>
-            <strong>3 Key:</strong> Army Belly Crawl Mode (Very Slow)<br/><br/>
+            <strong>2 Key:</strong> Knee Crawl Mode (Smaller)<br/>
+            <strong>3 Key:</strong> Tiny Crawl Mode (Microscopic - fits through cracks!)<br/><br/>
             Press <strong>ESC</strong> to release mouse and adjust menu controls.
         </div>
     </div>
@@ -139,12 +139,16 @@
             <label id="lbl-brightness">Flashlight Intensity: 10.0</label>
             <input type="range" id="sld-brightness" class="slider" min="0" max="30" step="0.5" value="10">
         </div>
+        <div class="control-group">
+            <label id="lbl-size">Avatar Size: 1.0x</label>
+            <input type="range" id="sld-size" class="slider" min="0.1" max="2" step="0.1" value="1">
+        </div>
     </div>
 
     <div id="status-display">
 NAVIGATION: FLY MODE
 SPEED: 18.0 u/s | ALT: 2.0 m
-STANCE: STANDING
+STANCE: STANDING | SIZE: 1.0x
     </div>
 
     <script>
@@ -176,11 +180,12 @@ STANCE: STANDING
         let isFlyMode = true;
         let currentStance = 'stand';
         let speedMultiplier = 1;
+        let avatarSizeMultiplier = 1.0;
 
         const STANCES = {
             stand: { height: 2.0, speed: 18.0, label: 'STANDING' },
             crawl: { height: 0.9, speed: 6.5, label: 'KNEE CRAWL' },
-            belly: { height: 0.3, speed: 2.2, label: 'ARMY BELLY CRAWL' }
+            belly: { height: 0.3, speed: 2.2, label: 'TINY CRAWL' }
         };
 
         let targetHeight = STANCES.stand.height;
@@ -207,6 +212,8 @@ STANCE: STANDING
         const btnWalk = document.getElementById('btn-walk');
         const sldBrightness = document.getElementById('sld-brightness');
         const lblBrightness = document.getElementById('lbl-brightness');
+        const sldSize = document.getElementById('sld-size');
+        const lblSize = document.getElementById('lbl-size');
         const statusDisplay = document.getElementById('status-display');
 
         document.getElementById('control-panel').addEventListener('click', (e) => e.stopPropagation());
@@ -215,6 +222,16 @@ STANCE: STANDING
             const val = parseFloat(e.target.value);
             flashlight.intensity = val;
             lblBrightness.innerText = `Flashlight Intensity: ${val.toFixed(1)}`;
+        });
+
+        sldSize.addEventListener('input', (e) => {
+            avatarSizeMultiplier = parseFloat(e.target.value);
+            lblSize.innerText = `Avatar Size: ${avatarSizeMultiplier.toFixed(1)}x`;
+            
+            // Update stance heights based on size multiplier
+            targetHeight = STANCES[currentStance].height * avatarSizeMultiplier;
+            controls.getObject().position.y = targetHeight;
+            updateStatusHUD();
         });
 
         function switchNavEngine(fly) {
@@ -226,7 +243,7 @@ STANCE: STANDING
             } else {
                 btnWalk.classList.add('active');
                 btnFly.classList.remove('active');
-                controls.getObject().position.y = STANCES[currentStance].height;
+                controls.getObject().position.y = STANCES[currentStance].height * avatarSizeMultiplier;
             }
             updateStatusHUD();
         }
@@ -241,7 +258,7 @@ STANCE: STANDING
             statusDisplay.innerText = 
                 `NAVIGATION: ${isFlyMode ? 'FLY MODE' : 'WALK MODE'}\n` +
                 `SPEED: ${currentSpeed} u/s | ALT: ${altitude} m\n` +
-                `STANCE: ${STANCES[currentStance].label}`;
+                `STANCE: ${STANCES[currentStance].label} | SIZE: ${avatarSizeMultiplier.toFixed(1)}x`;
         }
 
         document.addEventListener('keydown', (e) => {
@@ -274,8 +291,11 @@ STANCE: STANDING
 
         function changeStance(stanceKey) {
             currentStance = stanceKey;
-            targetHeight = STANCES[stanceKey].height;
+            targetHeight = STANCES[stanceKey].height * avatarSizeMultiplier;
             movementSpeed = STANCES[stanceKey].speed;
+            if (!isFlyMode) {
+                controls.getObject().position.y = targetHeight;
+            }
             updateStatusHUD();
         }
 
@@ -297,9 +317,10 @@ STANCE: STANDING
 
             if (controls.isLocked) {
                 moveVector.set(0, 0, 0);
+                const currentPos = controls.getObject().position;
 
                 if (isFlyMode) {
-                    // FLY MODE - FREE MOVEMENT, NO CONSTRAINTS
+                    // FLY MODE - PURE FREE FLIGHT
                     camera.getWorldDirection(lookDirection);
                     sideDirection.copy(lookDirection).cross(camera.up).normalize();
 
@@ -312,7 +333,7 @@ STANCE: STANDING
 
                     if (moveVector.lengthSq() > 0) {
                         moveVector.normalize();
-                        controls.getObject().position.addScaledVector(moveVector, movementSpeed * speedMultiplier * deltaTime);
+                        currentPos.addScaledVector(moveVector, movementSpeed * speedMultiplier * deltaTime);
                     }
 
                     // Handle roll rotation
@@ -332,7 +353,6 @@ STANCE: STANDING
                     controls.moveForward(-moveVector.z * movementSpeed * speedMultiplier * deltaTime);
                     controls.moveRight(moveVector.x * movementSpeed * speedMultiplier * deltaTime);
 
-                    const currentPos = controls.getObject().position;
                     const floorLevel = 0;
 
                     if (currentPos.y > floorLevel + targetHeight) {
