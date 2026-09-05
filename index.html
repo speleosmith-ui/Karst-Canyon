@@ -227,6 +227,7 @@ STANCE: STANDING | SIZE: 1.0x
         
         let verticalVelocity = 0;
         const GRAVITY = 32.0;
+        const FLOOR_LEVEL = 0;
 
         const btnFly = document.getElementById('btn-fly');
         const btnWalk = document.getElementById('btn-walk');
@@ -272,6 +273,7 @@ STANCE: STANDING | SIZE: 1.0x
                 btnWalk.classList.add('active');
                 btnFly.classList.remove('active');
                 controls.getObject().position.y = STANCES[currentStance].height * avatarSizeMultiplier;
+                verticalVelocity = 0;
             }
             updateStatusHUD();
         }
@@ -381,15 +383,19 @@ STANCE: STANDING | SIZE: 1.0x
                     controls.moveForward(-moveVector.z * movementSpeed * speedMultiplier * deltaTime);
                     controls.moveRight(moveVector.x * movementSpeed * speedMultiplier * deltaTime);
 
-                    const floorLevel = 0;
-
-                    if (currentPos.y > floorLevel + targetHeight) {
-                        verticalVelocity -= GRAVITY * deltaTime;
+                    // Apply gravity ALWAYS in walk mode
+                    const groundLevel = FLOOR_LEVEL + targetHeight;
+                    
+                    if (currentPos.y > groundLevel) {
+                        // Falling - accelerate downward
+                        verticalVelocity += GRAVITY * deltaTime;
                     } else {
+                        // At or below ground level - snap to ground
                         verticalVelocity = 0;
-                        currentPos.y = floorLevel + targetHeight;
+                        currentPos.y = groundLevel;
                     }
-                    currentPos.y += verticalVelocity * deltaTime;
+                    
+                    currentPos.y -= verticalVelocity * deltaTime;
                 }
             }
 
