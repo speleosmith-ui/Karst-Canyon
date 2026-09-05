@@ -287,7 +287,7 @@ body, html {
   </div>
 
   <div class="control-group">
-    <label>Cave Audio & Ambience</label>
+    <label>Crawl Audio</label>
     <div class="btn-group">
       <button id="btn-toggle-audio" class="toggle-btn active">🔊 Audio: ON</button>
     </div>
@@ -366,7 +366,7 @@ controls.minDistance = 0.05;
 const gridHelper = new THREE.GridHelper(100, 50, 0x00baee, 0x1f242d);
 scene.add(gridHelper);
 
-// Very low ambient light to mimic true deep cave darkness
+// Low ambient light for authentic darkness
 const ambientLight = new THREE.AmbientLight(0xffffff, 0.15);
 scene.add(ambientLight);
 
@@ -374,49 +374,28 @@ const hemiLight = new THREE.HemisphereLight(0x88aacc, 0x111111, 0.1);
 hemiLight.position.set(0, 100, 0);
 scene.add(hemiLight);
 
-// --- Caver's Dual-Beam Headlamp Setup ---
-// 1. Focused Hot-Spot Beam
+// --- Caver's Dual-Beam Headlamp ---
 const spotCenter = new THREE.SpotLight(0xfff3e0, 25, 120, Math.PI / 6, 0.4, 1.2);
 scene.add(spotCenter);
 scene.add(spotCenter.target);
 
-// 2. Wide Flood Spill Light
 const spotSpill = new THREE.SpotLight(0xffeedd, 8, 45, Math.PI / 2.3, 0.9, 1.8);
 scene.add(spotSpill);
 scene.add(spotSpill.target);
 
-// 3. Proximity Bulb (Illuminates hands, knees, and rocks 1cm away)
 const proximityLight = new THREE.PointLight(0xffeacc, 0.8, 4, 1.5);
 scene.add(proximityLight);
 
-// --- Atmospheric Cave Dust Particles ---
-const dustCount = 200;
-const dustGeo = new THREE.BufferGeometry();
-const dustPos = new Float32Array(dustCount * 3);
-for(let i=0; i<dustCount*3; i+=3){
-  dustPos[i] = (Math.random() - 0.5) * 8;
-  dustPos[i+1] = (Math.random() - 0.5) * 4;
-  dustPos[i+2] = (Math.random() - 0.5) * 8;
-}
-dustGeo.setAttribute('position', new THREE.BufferAttribute(dustPos, 3));
-const dustMat = new THREE.PointsMaterial({
-  color: 0xddeeff,
-  size: 0.025,
-  transparent: true,
-  opacity: 0.45,
-  blending: THREE.AdditiveBlending
-});
-const dustParticles = new THREE.Points(dustGeo, dustMat);
-scene.add(dustParticles);
-
-// --- Procedural Cave Audio Engine (Web Audio API) ---
+// --- Procedural Crawling & Heavy Breathing Audio (Web Audio API) ---
 let audioCtx = null;
 let masterGain = null;
 let isAudioEnabled = true;
 let isAudioInitialized = false;
-let ambienceNode = null;
+
 let stepTimer = 0;
 let stepCycle = 0;
+let breathState = 'inhale'; // 'inhale', 'exhale'
+let breathTimer = 0;
 
 function initCaveAudio() {
   if (isAudioInitialized) return;
@@ -426,98 +405,86 @@ function initCaveAudio() {
     masterGain = audioCtx.createGain();
     masterGain.gain.value = 0.7;
     masterGain.connect(audioCtx.destination);
-
-    // Deep Cave Subterranean Rumble (Filtered Pink/Brown Noise)
-    const bufferSize = audioCtx.sampleRate * 2;
-    const noiseBuffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
-    const output = noiseBuffer.getChannelData(0);
-    let lastOut = 0.0;
-    for (let i = 0; i < bufferSize; i++) {
-      const white = Math.random() * 2 - 1;
-      output[i] = (lastOut + (0.02 * white)) / 1.02;
-      lastOut = output[i];
-      output[i] *= 3.5;
-    }
-
-    const whiteNoise = audioCtx.createBufferSource();
-    whiteNoise.buffer = noiseBuffer;
-    whiteNoise.loop = true;
-
-    const filter = audioCtx.createBiquadFilter();
-    filter.type = 'lowpass';
-    filter.frequency.value = 140;
-
-    const ambGain = audioCtx.createGain();
-    ambGain.gain.value = 0.28;
-
-    whiteNoise.connect(filter);
-    filter.connect(ambGain);
-    ambGain.connect(masterGain);
-    whiteNoise.start(0);
-
-    // Schedule echoing water droplets
-    scheduleWaterDrop();
-
     isAudioInitialized = true;
   } catch(e) {
     console.warn('Web Audio could not start:', e);
   }
 }
 
-function playWaterDrop() {
-  if (!isAudioEnabled || !audioCtx || audioCtx.state !== 'running') return;
-  const osc = audioCtx.createOscillator();
-  const gain = audioCtx.createGain();
-  const freq = 1200 + Math.random() * 800;
-
-  osc.type = 'sine';
-  osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
-  osc.frequency.exponentialRampToValueAtTime(freq * 0.4, audioCtx.currentTime + 0.12);
-
-  gain.gain.setValueAtTime(0.18 + Math.random() * 0.12, audioCtx.currentTime);
-  gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.35);
-
-  osc.connect(gain);
-  gain.connect(masterGain);
-
-  osc.start();
-  osc.stop(audioCtx.currentTime + 0.35);
-}
-
-function scheduleWaterDrop() {
-  const delay = 2500 + Math.random() * 4500;
-  setTimeout(() => {
-    playWaterDrop();
-    scheduleWaterDrop();
-  }, delay);
-}
-
-// Procedural Movement Audio (Gravel Boot Steps vs Knee/Glove Crawl Scrapes)
-function playMovementSound(isCrawling) {
+// Crawling Friction / Glove & Knee Scrape on Rock
+function playCrawlScrapeSound() {
   if (!isAudioEnabled || !audioCtx || audioCtx.state !== 'running') return;
 
   const now = audioCtx.currentTime;
-  const dur = isCrawling ? 0.22 : 0.09;
-  const bufferSize = audioCtx.sampleRate * dur;
+  const dur = 0.24;
+  const bufferSize = Math.floor(audioCtx.sampleRate * dur);
   const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
   const data = buffer.getChannelData(0);
 
   for (let i = 0; i < bufferSize; i++) {
-    data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (bufferSize * 0.5));
+    data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (bufferSize * 0.4));
   }
 
   const noise = audioCtx.createBufferSource();
   noise.buffer = buffer;
 
   const filter = audioCtx.createBiquadFilter();
-  filter.type = isCrawling ? 'bandpass' : 'lowpass';
-  filter.frequency.value = isCrawling ? (600 + Math.random() * 400) : (350 + Math.random() * 200);
-  filter.Q.value = isCrawling ? 2.5 : 1.0;
+  filter.type = 'bandpass';
+  filter.frequency.setValueAtTime(650 + Math.random() * 350, now);
+  filter.Q.setValueAtTime(2.2, now);
 
   const gain = audioCtx.createGain();
-  const vol = isCrawling ? (0.2 + Math.random() * 0.1) : (0.35 + Math.random() * 0.15);
+  const vol = 0.28 + Math.random() * 0.12;
   gain.gain.setValueAtTime(vol, now);
   gain.gain.exponentialRampToValueAtTime(0.001, now + dur);
+
+  noise.connect(filter);
+  filter.connect(gain);
+  gain.connect(masterGain);
+
+  noise.start(now);
+}
+
+// Procedural Heavy / Labored Breathing Sound
+function playHeavyBreath(isInhale) {
+  if (!isAudioEnabled || !audioCtx || audioCtx.state !== 'running') return;
+
+  const now = audioCtx.currentTime;
+  const dur = isInhale ? 1.15 : 1.35;
+  const bufferSize = Math.floor(audioCtx.sampleRate * dur);
+  const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+  const data = buffer.getChannelData(0);
+
+  let b0 = 0, b1 = 0, b2 = 0;
+  for (let i = 0; i < bufferSize; i++) {
+    const white = Math.random() * 2 - 1;
+    b0 = 0.99 * b0 + white * 0.05;
+    b1 = 0.95 * b1 + white * 0.05;
+    b2 = 0.85 * b2 + white * 0.1;
+    data[i] = (b0 + b1 + b2) * 0.35;
+  }
+
+  const noise = audioCtx.createBufferSource();
+  noise.buffer = buffer;
+
+  const filter = audioCtx.createBiquadFilter();
+  filter.type = 'bandpass';
+  filter.frequency.setValueAtTime(isInhale ? 420 : 360, now);
+  filter.frequency.exponentialRampToValueAtTime(isInhale ? 580 : 230, now + dur);
+  filter.Q.setValueAtTime(1.8, now);
+
+  const gain = audioCtx.createGain();
+  const peakVol = isInhale ? 0.22 : 0.28;
+
+  if (isInhale) {
+    gain.gain.setValueAtTime(0.001, now);
+    gain.gain.linearRampToValueAtTime(peakVol, now + dur * 0.7);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + dur);
+  } else {
+    gain.gain.setValueAtTime(0.01, now);
+    gain.gain.linearRampToValueAtTime(peakVol, now + dur * 0.2);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + dur);
+  }
 
   noise.connect(filter);
   filter.connect(gain);
@@ -1055,20 +1022,34 @@ function animate() {
     }
 
     const isMoving = moveVec.lengthSq() > 0.001;
+    const isCrawling = (eyeHeight < 1.0);
+
     if (isMoving) {
       moveVec.normalize();
       const stepDist = currentScaledSpeed * speedMultiplier * deltaTime;
       playerPos.addScaledVector(moveVec, stepDist);
 
-      // Procedural audio step timing & head-bobbing
-      const isCrawling = (eyeHeight < 1.0);
-      const stepInterval = isCrawling ? (0.45 / (currentScaledSpeed * 0.4)) : (0.40 / currentScaledSpeed);
-      stepTimer += deltaTime;
       stepCycle += deltaTime * (isCrawling ? 7.0 : 10.0);
 
-      if (stepTimer >= Math.max(0.2, stepInterval)) {
-        stepTimer = 0;
-        playMovementSound(isCrawling);
+      // Play crawling scrape sound only when low (<1.0m) and moving
+      if (isCrawling) {
+        stepTimer += deltaTime;
+        const crawlInterval = Math.max(0.28, 0.45 / Math.max(0.4, currentScaledSpeed));
+        if (stepTimer >= crawlInterval) {
+          stepTimer = 0;
+          playCrawlScrapeSound();
+        }
+      }
+    }
+
+    // Heavy Labored Breathing while in Crawling stance (<1.0m)
+    if (isCrawling && isAudioEnabled) {
+      breathTimer += deltaTime;
+      const breathInterval = isMoving ? 1.45 : 2.2; // Quicker breathing while moving
+      if (breathTimer >= breathInterval) {
+        breathTimer = 0;
+        playHeavyBreath(breathState === 'inhale');
+        breathState = (breathState === 'inhale') ? 'exhale' : 'inhale';
       }
     }
 
@@ -1079,11 +1060,11 @@ function animate() {
       if (moveState.moveDown) playerPos.y -= currentScaledSpeed * speedMultiplier * deltaTime;
     }
 
-    // Realistic head bobbing & shoulder sway
+    // Natural crawl sway / head bobbing
     let bobY = 0;
     let bobRoll = 0;
     if (isMoving && activeCameraMode === 'walk') {
-      const bobMagnitude = (eyeHeight < 1.0) ? (eyeHeight * 0.04) : 0.035;
+      const bobMagnitude = isCrawling ? (eyeHeight * 0.04) : 0.035;
       bobY = Math.sin(stepCycle) * bobMagnitude;
       bobRoll = Math.cos(stepCycle * 0.5) * 0.008;
     }
@@ -1094,7 +1075,7 @@ function animate() {
     const targetLook = camera.position.clone().add(lookDir);
     camera.lookAt(targetLook);
 
-    // Caver Headlamp alignment
+    // Headlamp follow
     spotCenter.position.copy(camera.position);
     spotCenter.target.position.copy(targetLook);
 
@@ -1102,10 +1083,6 @@ function animate() {
     spotSpill.target.position.copy(targetLook);
 
     proximityLight.position.copy(camera.position);
-
-    // Drifting Cave Dust Motes in Light Beam
-    dustParticles.position.copy(camera.position);
-    dustParticles.rotation.y += 0.001;
 
     updateStatusHUD();
   }
