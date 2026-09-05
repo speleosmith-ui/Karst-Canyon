@@ -150,8 +150,8 @@
     </div>
 
     <div id="status-display">
-NAVIGATION: FLY MODE
-SPEED: 4.5 u/s | VEL: 0.0
+NAVIGATION: WALK MODE
+SPEED: 4.5 u/s | Y: 2.0 | VEL: 0.0
 STANCE: STANDING | SIZE: 1.0x
     </div>
 
@@ -209,7 +209,7 @@ STANCE: STANDING | SIZE: 1.0x
         head.receiveShadow = true;
         playerGroup.add(head);
 
-        playerGroup.position.set(0, 2, 5);
+        playerGroup.position.set(0, 2, 0);
 
         // Blocker and input
         const blocker = document.getElementById('blocker');
@@ -228,7 +228,7 @@ STANCE: STANDING | SIZE: 1.0x
             }
         });
 
-        let isFlyMode = true;
+        let isFlyMode = false;  // Start in walk mode
         let currentStance = 'stand';
         let speedMultiplier = 1;
         let avatarSizeMultiplier = 1.0;
@@ -241,6 +241,9 @@ STANCE: STANDING | SIZE: 1.0x
 
         let targetHeight = STANCES.stand.height;
         let movementSpeed = STANCES.stand.speed;
+        let verticalVelocity = 0;
+        const GRAVITY = 20.0;
+        const GROUND_Y = 0;
 
         const moveState = { 
             forward: false, 
@@ -250,10 +253,6 @@ STANCE: STANDING | SIZE: 1.0x
             moveUp: false,
             moveDown: false
         };
-
-        let verticalVelocity = 0;
-        const GRAVITY = 32.0;
-        const FLOOR_LEVEL = 0;
 
         let yaw = 0;
         let pitch = 0;
@@ -299,7 +298,7 @@ STANCE: STANDING | SIZE: 1.0x
             } else {
                 btnWalk.classList.add('active');
                 btnFly.classList.remove('active');
-                playerGroup.position.y = STANCES[currentStance].height * avatarSizeMultiplier;
+                playerGroup.position.y = GROUND_Y + (STANCES[currentStance].height * avatarSizeMultiplier) / 2;
                 verticalVelocity = 0;
             }
             updateStatusHUD();
@@ -310,11 +309,10 @@ STANCE: STANDING | SIZE: 1.0x
 
         function updateStatusHUD() {
             const pos = playerGroup.position;
-            const altitude = pos.y.toFixed(1);
             const currentSpeed = (movementSpeed * speedMultiplier).toFixed(1);
             statusDisplay.innerText = 
                 `NAVIGATION: ${isFlyMode ? 'FLY MODE' : 'WALK MODE'}\n` +
-                `SPEED: ${currentSpeed} u/s | VEL: ${Math.abs(verticalVelocity).toFixed(1)}\n` +
+                `SPEED: ${currentSpeed} u/s | Y: ${pos.y.toFixed(1)} | VEL: ${Math.abs(verticalVelocity).toFixed(1)}\n` +
                 `STANCE: ${STANCES[currentStance].label} | SIZE: ${avatarSizeMultiplier.toFixed(1)}x`;
         }
 
@@ -348,7 +346,8 @@ STANCE: STANDING | SIZE: 1.0x
             targetHeight = STANCES[stanceKey].height * avatarSizeMultiplier;
             movementSpeed = STANCES[stanceKey].speed;
             if (!isFlyMode) {
-                playerGroup.position.y = targetHeight;
+                // Set Y position so avatar bottom is at ground
+                playerGroup.position.y = GROUND_Y + (targetHeight / 2);
             }
             updateStatusHUD();
         }
@@ -358,10 +357,24 @@ STANCE: STANDING | SIZE: 1.0x
         dracoLoader.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.6/');
         loader.setDRACOLoader(dracoLoader);
 
-        loader.load('BuzzardCaveA-v1.glb', function (gltf) {
-            scene.add(gltf.scene);
-            console.log('Cave mesh loaded successfully.');
-        });
+        loader.load('BuzzardCaveA-v1.glb', 
+            function (gltf) {
+                scene.add(gltf.scene);
+                console.log('Cave mesh loaded successfully.');
+            },
+            undefined,
+            function (error) {
+                console.warn('Cave mesh failed to load (using fallback):', error);
+                // Add fallback ground plane
+                const groundGeom = new THREE.PlaneGeometry(500, 500);
+                const groundMat = new THREE.MeshStandardMaterial({ color: 0x333333 });
+                const ground = new THREE.Mesh(groundGeom, groundMat);
+                ground.rotation.x = -Math.PI / 2;
+                ground.position.y = GROUND_Y;
+                ground.receiveShadow = true;
+                scene.add(ground);
+            }
+        );
 
         const clock = new THREE.Clock();
 
@@ -397,15 +410,13 @@ STANCE: STANDING | SIZE: 1.0x
                     if (moveState.moveDown) playerGroup.position.y -= movementSpeed * speedMultiplier * deltaTime;
                 } else {
                     // Walk mode gravity
-                    const groundLevel = FLOOR_LEVEL + targetHeight;
+                    const groundLevel = GROUND_Y + (targetHeight / 2);
                     
-                    if (playerGroup.position.y > groundLevel) {
-                        verticalVelocity += GRAVITY * deltaTime;
-                        playerGroup.position.y -= verticalVelocity * deltaTime;
-                    } else if (playerGroup.position.y < groundLevel) {
+                    verticalVelocity += GRAVITY * deltaTime;
+                    playerGroup.position.y -= verticalVelocity * deltaTime;
+                    
+                    if (playerGroup.position.y <= groundLevel) {
                         playerGroup.position.y = groundLevel;
-                        verticalVelocity = 0;
-                    } else {
                         verticalVelocity = 0;
                     }
                 }
@@ -413,7 +424,7 @@ STANCE: STANDING | SIZE: 1.0x
 
             // THIRD-PERSON CAMERA - Behind the avatar
             const cameraDistance = 5;
-            const cameraHeight = 1.5;
+            const cameraHeight = 1.2;
             
             // Position camera behind player based on yaw (looking direction)
             const cameraPosX = playerGroup.position.x - Math.sin(yaw) * cameraDistance;
@@ -422,18 +433,18 @@ STANCE: STANDING | SIZE: 1.0x
             
             camera.position.set(cameraPosX, cameraPosY, cameraPosZ);
             
-            // Look at the player's head/upper body
+            // Look at the player's head
             const lookAtPoint = new THREE.Vector3(
-                playerGroup.position.x,
-                playerGroup.position.y + 0.5,
-                playerGroup.position.z
+                playerGroup.position.x + Math.sin(yaw) * 0.5,
+                playerGroup.position.y + 0.3,
+                playerGroup.position.z - Math.cos(yaw) * 0.5
             );
             camera.lookAt(lookAtPoint);
 
             // Flashlight follows camera
             flashlight.position.copy(camera.position);
             const gazeDir = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
-            flashlight.target.position.copy(camera.position).add(gazeDir);
+            flashlight.target.position.copy(camera.position).add(gazeDir.multiplyScalar(50));
 
             updateStatusHUD();
             renderer.render(scene, camera);
