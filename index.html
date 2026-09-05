@@ -18,7 +18,7 @@ body, html {
   touch-action: none;
 }
 
-/* --- Caver Vignette & Slime Splatter Overlays --- */
+/* --- Caver Vignette Overlay --- */
 #vignette {
   position: absolute;
   top: 0;
@@ -28,24 +28,6 @@ body, html {
   pointer-events: none;
   z-index: 5;
   background: radial-gradient(circle at center, rgba(0,0,0,0) 55%, rgba(0,0,0,0.65) 90%, rgba(0,0,0,0.92) 100%);
-}
-#slime-overlay {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  pointer-events: none;
-  z-index: 6;
-  opacity: 0;
-  transition: opacity 0.25s ease;
-  background: 
-    radial-gradient(circle at 45% 45%, rgba(140, 200, 30, 0.9) 0%, rgba(80, 140, 10, 0.75) 14%, transparent 28%),
-    radial-gradient(circle at 65% 35%, rgba(160, 220, 40, 0.95) 0%, rgba(90, 150, 20, 0.65) 9%, transparent 20%),
-    radial-gradient(circle at 28% 62%, rgba(130, 180, 30, 0.8) 0%, transparent 16%),
-    radial-gradient(circle at 72% 68%, rgba(110, 160, 20, 0.85) 0%, transparent 22%),
-    radial-gradient(circle at 50% 50%, rgba(100, 150, 20, 0.4) 0%, transparent 75%);
-  filter: blur(1.5px) contrast(150%);
 }
 
 /* --- Collapsible Control Panel --- */
@@ -137,20 +119,6 @@ body, html {
   cursor: pointer;
   text-align: center;
   font-size: 12px;
-}
-.danger-btn {
-  background: #dc3545;
-  border: 1px solid #ff6b7b;
-  color: white;
-  font-weight: bold;
-  padding: 8px;
-  border-radius: 4px;
-  cursor: pointer;
-  text-align: center;
-  font-size: 11px;
-}
-.danger-btn:hover {
-  background: #bd2130;
 }
 .primary-btn {
   background: #007acc;
@@ -287,7 +255,6 @@ body, html {
 <body>
 
 <div id="vignette"></div>
-<div id="slime-overlay"></div>
 <input type="file" id="file-input" accept=".glb,.gltf">
 
 <button id="btn-toggle-menu">⚙️ Menu</button>
@@ -298,14 +265,6 @@ body, html {
 <div id="control-panel">
   <button id="btn-enter-fps" class="primary-btn">🎮 Enter Cave (Walk Mode)</button>
   <button id="btn-load-file" class="action-btn">📂 Open Another GLB</button>
-
-  <div class="control-group">
-    <label>Cave Vulture Encounter</label>
-    <div class="btn-group">
-      <button id="btn-toggle-vulture" class="toggle-btn active">🦅 Vulture: ON</button>
-      <button id="btn-tp-vulture" class="danger-btn">🎯 Teleport to Nest</button>
-    </div>
-  </div>
 
   <div class="control-group">
     <label>Navigation Mode</label>
@@ -330,14 +289,6 @@ body, html {
       <button id="btn-preset-crawl" class="toggle-btn">0.2m</button>
       <button id="btn-preset-micro" class="toggle-btn">1cm</button>
     </div>
-  </div>
-
-  <div class="control-group">
-    <label>Audio</label>
-    <div class="btn-group">
-      <button id="btn-toggle-audio" class="toggle-btn active">🔊 Audio: ON</button>
-    </div>
-    <input type="range" id="sld-volume" class="slider" min="0" max="1" step="0.05" value="0.7" style="margin-top: 4px;">
   </div>
 
   <div class="control-group">
@@ -386,9 +337,8 @@ CAMERA: ORBIT OVERVIEW
 <script>
 const isTouchDevice = ('ontouchstart' in window || navigator.maxTouchPoints > 0);
 
-// --- Coordinates ---
+// --- Custom Entrance Coordinate ---
 const PLAYER_SPAWN_POS = new THREE.Vector3(5.1, 8.0, -1.3);
-const VULTURE_SPAWN_POS = new THREE.Vector3(-2.9, 4.0, 1.1);
 
 // --- Scene Setup ---
 const scene = new THREE.Scene();
@@ -412,7 +362,7 @@ controls.dampingFactor = 0.08;
 controls.maxDistance = 1000;
 controls.minDistance = 0.05;
 
-// Subtle Grid
+// Grid Floor
 const gridHelper = new THREE.GridHelper(100, 50, 0x00baee, 0x1f242d);
 scene.add(gridHelper);
 
@@ -424,7 +374,7 @@ const hemiLight = new THREE.HemisphereLight(0x88aacc, 0x111111, 0.1);
 hemiLight.position.set(0, 100, 0);
 scene.add(hemiLight);
 
-// Headlamp setup
+// Headlamp Setup
 const spotCenter = new THREE.SpotLight(0xfff3e0, 25, 120, Math.PI / 6, 0.4, 1.2);
 scene.add(spotCenter);
 scene.add(spotCenter.target);
@@ -435,321 +385,6 @@ scene.add(spotSpill.target);
 
 const proximityLight = new THREE.PointLight(0xffeacc, 0.8, 4, 1.5);
 scene.add(proximityLight);
-
-// --- Procedural 3D Turkey Vulture (0.5x Scale) ---
-let isVultureEnabled = true;
-const vultureGroup = new THREE.Group();
-let vultureLeftWing = null;
-let vultureRightWing = null;
-let vultureHead = null;
-let vultureState = 'dormant';
-let vultureTimer = 0;
-let lastHissTime = 0;
-let vomitParticles = [];
-
-function buildVultureModel() {
-  const bodyMat = new THREE.MeshStandardMaterial({ color: 0x181820, roughness: 0.92 });
-  const skinMat = new THREE.MeshStandardMaterial({ color: 0x991818, roughness: 0.65 });
-  const beakMat = new THREE.MeshStandardMaterial({ color: 0xcca028, roughness: 0.35 });
-  const eyeMat = new THREE.MeshBasicMaterial({ color: 0xff2200 });
-
-  const body = new THREE.Mesh(new THREE.SphereGeometry(0.35, 12, 12), bodyMat);
-  body.scale.set(0.85, 1.2, 0.9);
-  vultureGroup.add(body);
-
-  const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.14, 0.35, 8), skinMat);
-  neck.position.set(0, 0.45, 0.15);
-  neck.rotation.x = Math.PI / 6;
-  vultureGroup.add(neck);
-
-  vultureHead = new THREE.Group();
-  vultureHead.position.set(0, 0.68, 0.28);
-
-  const headMesh = new THREE.Mesh(new THREE.SphereGeometry(0.16, 10, 10), skinMat);
-  vultureHead.add(headMesh);
-
-  const beak = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.24, 6), beakMat);
-  beak.position.set(0, -0.04, 0.18);
-  beak.rotation.x = Math.PI / 2.2;
-  vultureHead.add(beak);
-
-  const leftEye = new THREE.Mesh(new THREE.SphereGeometry(0.035, 6, 6), eyeMat);
-  leftEye.position.set(0.1, 0.05, 0.1);
-  const rightEye = leftEye.clone();
-  rightEye.position.x = -0.1;
-  vultureHead.add(leftEye);
-  vultureHead.add(rightEye);
-
-  vultureGroup.add(vultureHead);
-
-  vultureLeftWing = new THREE.Group();
-  vultureLeftWing.position.set(0.28, 0.2, 0);
-  const lWingMesh = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.06, 0.45), bodyMat);
-  lWingMesh.position.set(0.35, 0, 0);
-  vultureLeftWing.add(lWingMesh);
-  vultureGroup.add(vultureLeftWing);
-
-  vultureRightWing = new THREE.Group();
-  vultureRightWing.position.set(-0.28, 0.2, 0);
-  const rWingMesh = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.06, 0.45), bodyMat);
-  rWingMesh.position.set(-0.35, 0, 0);
-  vultureRightWing.add(rWingMesh);
-  vultureGroup.add(vultureRightWing);
-
-  const nestMat = new THREE.MeshStandardMaterial({ color: 0x2b221d, roughness: 0.95 });
-  const boneMat = new THREE.MeshStandardMaterial({ color: 0x8a8475, roughness: 0.8 });
-
-  for (let i = 0; i < 8; i++) {
-    const twig = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.6 + Math.random()*0.3, 4), nestMat);
-    twig.position.set((Math.random()-0.5)*0.9, -0.18, (Math.random()-0.5)*0.9);
-    twig.rotation.set(Math.PI/2 + (Math.random()-0.5)*0.2, 0, Math.random()*Math.PI);
-    vultureGroup.add(twig);
-  }
-  for (let i = 0; i < 3; i++) {
-    const bone = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.4, 5), boneMat);
-    bone.position.set((Math.random()-0.5)*0.7, -0.16, (Math.random()-0.5)*0.7);
-    bone.rotation.set(Math.PI/2, 0, Math.random()*Math.PI);
-    vultureGroup.add(bone);
-  }
-
-  vultureGroup.scale.set(0.5, 0.5, 0.5);
-  vultureGroup.position.copy(VULTURE_SPAWN_POS);
-  scene.add(vultureGroup);
-}
-
-buildVultureModel();
-
-// Projectile Vomit System
-const vomitGeo = new THREE.SphereGeometry(0.03, 6, 6);
-const vomitMat = new THREE.MeshStandardMaterial({ color: 0x76b810, roughness: 0.2, emissive: 0x2a4400 });
-
-function spawnVomitBurst() {
-  const beakWorld = new THREE.Vector3();
-  if (vultureHead) vultureHead.getWorldPosition(beakWorld);
-  beakWorld.y -= 0.03;
-
-  const targetDir = playerPos.clone().sub(beakWorld).normalize();
-
-  for (let i = 0; i < 24; i++) {
-    const p = new THREE.Mesh(vomitGeo, vomitMat);
-    p.position.copy(beakWorld);
-    const spread = new THREE.Vector3(
-      (Math.random() - 0.5) * 0.35,
-      (Math.random() - 0.5) * 0.3 + 0.15,
-      (Math.random() - 0.5) * 0.35
-    );
-    const vel = targetDir.clone().multiplyScalar(6.5 + Math.random() * 3.0).add(spread);
-    vomitParticles.push({ mesh: p, velocity: vel, life: 1.6 });
-    scene.add(p);
-  }
-}
-
-function triggerSlimeSplatter() {
-  const overlay = document.getElementById('slime-overlay');
-  overlay.style.opacity = '1';
-  setTimeout(() => { overlay.style.opacity = '0'; }, 3800);
-}
-
-// --- Procedural Audio Engine (Breathing & Grunting Only) ---
-let audioCtx = null;
-let masterGain = null;
-let isAudioEnabled = true;
-let isAudioInitialized = false;
-
-let gruntTimer = 0;
-let stepCycle = 0;
-let breathState = 'inhale';
-let breathTimer = 0;
-
-function initCaveAudio() {
-  if (!audioCtx) {
-    try {
-      const AudioContext = window.AudioContext || window.webkitAudioContext;
-      audioCtx = new AudioContext();
-      masterGain = audioCtx.createGain();
-      masterGain.gain.value = 0.7;
-      masterGain.connect(audioCtx.destination);
-      isAudioInitialized = true;
-    } catch(e) {
-      console.warn('Web Audio error:', e);
-    }
-  }
-  if (audioCtx && audioCtx.state === 'suspended') {
-    audioCtx.resume();
-  }
-}
-
-window.addEventListener('click', () => initCaveAudio(), { once: true });
-window.addEventListener('keydown', () => initCaveAudio(), { once: true });
-window.addEventListener('touchstart', () => initCaveAudio(), { once: true });
-
-function playVultureThroatHiss() {
-  if (!isAudioEnabled || !audioCtx || audioCtx.state !== 'running') return;
-  const now = audioCtx.currentTime;
-  const dur = 1.35;
-  const bufferSize = Math.floor(audioCtx.sampleRate * dur);
-  const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
-  const data = buffer.getChannelData(0);
-
-  for (let i = 0; i < bufferSize; i++) {
-    const t = i / audioCtx.sampleRate;
-    const throatTremor = 0.65 + 0.35 * Math.sin(2 * Math.PI * 13 * t);
-    data[i] = (Math.random() * 2 - 1) * throatTremor;
-  }
-
-  const noise = audioCtx.createBufferSource();
-  noise.buffer = buffer;
-
-  const filter = audioCtx.createBiquadFilter();
-  filter.type = 'bandpass';
-  filter.frequency.setValueAtTime(800, now);
-  filter.frequency.linearRampToValueAtTime(1150, now + dur * 0.4);
-  filter.frequency.exponentialRampToValueAtTime(620, now + dur);
-  filter.Q.setValueAtTime(3.5, now);
-
-  const gain = audioCtx.createGain();
-  gain.gain.setValueAtTime(0.01, now);
-  gain.gain.linearRampToValueAtTime(0.38, now + 0.2);
-  gain.gain.exponentialRampToValueAtTime(0.001, now + dur);
-
-  noise.connect(filter);
-  filter.connect(gain);
-  gain.connect(masterGain);
-  noise.start(now);
-}
-
-function playRetchAndVomitSound() {
-  if (!isAudioEnabled || !audioCtx || audioCtx.state !== 'running') return;
-  const now = audioCtx.currentTime;
-
-  const retchOsc = audioCtx.createOscillator();
-  const retchGain = audioCtx.createGain();
-  retchOsc.type = 'sawtooth';
-  retchOsc.frequency.setValueAtTime(145, now);
-  retchOsc.frequency.linearRampToValueAtTime(240, now + 0.16);
-  retchOsc.frequency.exponentialRampToValueAtTime(85, now + 0.45);
-
-  const retchFilter = audioCtx.createBiquadFilter();
-  retchFilter.type = 'lowpass';
-  retchFilter.frequency.setValueAtTime(420, now);
-
-  retchGain.gain.setValueAtTime(0.01, now);
-  retchGain.gain.linearRampToValueAtTime(0.40, now + 0.14);
-  retchGain.gain.exponentialRampToValueAtTime(0.01, now + 0.45);
-
-  retchOsc.connect(retchFilter);
-  retchFilter.connect(retchGain);
-  retchGain.connect(masterGain);
-  retchOsc.start(now);
-  retchOsc.stop(now + 0.45);
-
-  const spewStart = now + 0.35;
-  const dur = 0.85;
-  const bufferSize = Math.floor(audioCtx.sampleRate * dur);
-  const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
-  const data = buffer.getChannelData(0);
-
-  for (let i = 0; i < bufferSize; i++) {
-    const t = i / audioCtx.sampleRate;
-    const gurgle = 0.5 + 0.5 * Math.sin(2 * Math.PI * 36 * t) * Math.sin(2 * Math.PI * 16 * t);
-    data[i] = (Math.random() * 2 - 1) * gurgle;
-  }
-
-  const noise = audioCtx.createBufferSource();
-  noise.buffer = buffer;
-
-  const spewFilter = audioCtx.createBiquadFilter();
-  spewFilter.type = 'bandpass';
-  spewFilter.frequency.setValueAtTime(500, spewStart);
-  spewFilter.frequency.linearRampToValueAtTime(900, spewStart + 0.22);
-  spewFilter.frequency.exponentialRampToValueAtTime(240, spewStart + dur);
-  spewFilter.Q.setValueAtTime(2.2, spewStart);
-
-  const spewGain = audioCtx.createGain();
-  spewGain.gain.setValueAtTime(0.01, spewStart);
-  spewGain.gain.linearRampToValueAtTime(0.52, spewStart + 0.12);
-  spewGain.gain.exponentialRampToValueAtTime(0.001, spewStart + dur);
-
-  noise.connect(spewFilter);
-  spewFilter.connect(spewGain);
-  spewGain.connect(masterGain);
-  noise.start(spewStart);
-}
-
-// Procedural Crawling Physical Exertion Grunt
-function playCrawlGrunt() {
-  if (!isAudioEnabled || !audioCtx || audioCtx.state !== 'running') return;
-  const now = audioCtx.currentTime;
-  const dur = 0.22;
-
-  const osc = audioCtx.createOscillator();
-  const gain = audioCtx.createGain();
-  osc.type = 'sine';
-
-  const basePitch = 110 + Math.random() * 30;
-  osc.frequency.setValueAtTime(basePitch, now);
-  osc.frequency.linearRampToValueAtTime(basePitch - 25, now + dur);
-
-  const filter = audioCtx.createBiquadFilter();
-  filter.type = 'lowpass';
-  filter.frequency.setValueAtTime(220, now);
-
-  gain.gain.setValueAtTime(0.01, now);
-  gain.gain.linearRampToValueAtTime(0.24, now + 0.04);
-  gain.gain.exponentialRampToValueAtTime(0.001, now + dur);
-
-  osc.connect(filter);
-  filter.connect(gain);
-  gain.connect(masterGain);
-
-  osc.start(now);
-  osc.stop(now + dur);
-}
-
-// Labored Crawling Heavy Breathing
-function playHeavyBreath(isInhale) {
-  if (!isAudioEnabled || !audioCtx || audioCtx.state !== 'running') return;
-  const now = audioCtx.currentTime;
-  const dur = isInhale ? 1.05 : 1.25;
-  const bufferSize = Math.floor(audioCtx.sampleRate * dur);
-  const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
-  const data = buffer.getChannelData(0);
-
-  let b0 = 0, b1 = 0, b2 = 0;
-  for (let i = 0; i < bufferSize; i++) {
-    const white = Math.random() * 2 - 1;
-    b0 = 0.99 * b0 + white * 0.05;
-    b1 = 0.95 * b1 + white * 0.05;
-    b2 = 0.85 * b2 + white * 0.1;
-    data[i] = (b0 + b1 + b2) * 0.45;
-  }
-
-  const noise = audioCtx.createBufferSource();
-  noise.buffer = buffer;
-  const filter = audioCtx.createBiquadFilter();
-  filter.type = 'bandpass';
-  filter.frequency.setValueAtTime(isInhale ? 440 : 380, now);
-  filter.frequency.exponentialRampToValueAtTime(isInhale ? 620 : 220, now + dur);
-  filter.Q.setValueAtTime(1.6, now);
-
-  const gain = audioCtx.createGain();
-  const peakVol = isInhale ? 0.35 : 0.42;
-
-  if (isInhale) {
-    gain.gain.setValueAtTime(0.001, now);
-    gain.gain.linearRampToValueAtTime(peakVol, now + dur * 0.65);
-    gain.gain.exponentialRampToValueAtTime(0.001, now + dur);
-  } else {
-    gain.gain.setValueAtTime(0.01, now);
-    gain.gain.linearRampToValueAtTime(peakVol, now + dur * 0.2);
-    gain.gain.exponentialRampToValueAtTime(0.001, now + dur);
-  }
-
-  noise.connect(filter);
-  filter.connect(gain);
-  gain.connect(masterGain);
-  noise.start(now);
-}
 
 // State Variables
 let currentCaveMesh = null;
@@ -762,6 +397,7 @@ let isPointerLocked = false;
 let eyeHeight = 1.60; 
 let baseMoveSpeed = 8.5; 
 let currentScaledSpeed = 8.5;
+let stepCycle = 0;
 
 const groundRaycaster = new THREE.Raycaster();
 const downVector = new THREE.Vector3(0, -1, 0);
@@ -786,9 +422,6 @@ const btnModeOrbit = document.getElementById('btn-mode-orbit');
 const btnModeWalk = document.getElementById('btn-mode-walk');
 const btnModeFly = document.getElementById('btn-mode-fly');
 
-const btnToggleVulture = document.getElementById('btn-toggle-vulture');
-const btnTpVulture = document.getElementById('btn-tp-vulture');
-
 const sldSpeed = document.getElementById('sld-speed');
 const lblSpeed = document.getElementById('lbl-speed');
 
@@ -798,9 +431,6 @@ const btnPresetStand = document.getElementById('btn-preset-stand');
 const btnPresetCrouch = document.getElementById('btn-preset-crouch');
 const btnPresetCrawl = document.getElementById('btn-preset-crawl');
 const btnPresetMicro = document.getElementById('btn-preset-micro');
-
-const btnToggleAudio = document.getElementById('btn-toggle-audio');
-const sldVolume = document.getElementById('sld-volume');
 
 const btnRenderLit = document.getElementById('btn-render-lit');
 const btnRenderUnlit = document.getElementById('btn-render-unlit');
@@ -858,8 +488,6 @@ btnPresetCrawl.addEventListener('click', () => updateHeightAndSpeed(0.20));
 btnPresetMicro.addEventListener('click', () => updateHeightAndSpeed(0.01));
 
 function setCameraMode(mode) {
-  initCaveAudio();
-
   activeCameraMode = mode;
   btnModeOrbit.classList.toggle('active', mode === 'orbit');
   btnModeWalk.classList.toggle('active', mode === 'walk');
@@ -880,7 +508,7 @@ function setCameraMode(mode) {
       btnExitFPS.style.display = 'block';
       controlPanel.classList.add('hidden');
       helpToast.innerHTML = mode === 'walk' 
-        ? '🚶 <b>Walk Mode:</b> Floor hugging active | Watch out for vultures!'
+        ? '🚶 <b>Walk Mode:</b> Floor hugging active'
         : '✈️ <b>Fly Mode:</b> Move in sight line';
     } else {
       helpToast.innerHTML = mode === 'walk'
@@ -1155,32 +783,6 @@ fileInput.addEventListener('change', (e) => {
   if (e.target.files[0]) loadCaveModel(URL.createObjectURL(e.target.files[0]), e.target.files[0].name);
 });
 
-btnToggleVulture.addEventListener('click', () => {
-  isVultureEnabled = !isVultureEnabled;
-  vultureGroup.visible = isVultureEnabled;
-  btnToggleVulture.innerText = `🦅 Vulture: ${isVultureEnabled ? 'ON' : 'OFF'}`;
-  btnToggleVulture.classList.toggle('active', isVultureEnabled);
-});
-
-btnTpVulture.addEventListener('click', () => {
-  playerPos.set(VULTURE_SPAWN_POS.x, VULTURE_SPAWN_POS.y + eyeHeight, VULTURE_SPAWN_POS.z + 5.5);
-  yaw = Math.PI;
-  pitch = -0.05;
-  setCameraMode('walk');
-});
-
-btnToggleAudio.addEventListener('click', () => {
-  initCaveAudio();
-  isAudioEnabled = !isAudioEnabled;
-  btnToggleAudio.innerText = `🔊 Audio: ${isAudioEnabled ? 'ON' : 'OFF'}`;
-  btnToggleAudio.classList.toggle('active', isAudioEnabled);
-  if (masterGain) masterGain.gain.value = isAudioEnabled ? parseFloat(sldVolume.value) : 0;
-});
-
-sldVolume.addEventListener('input', (e) => {
-  if (masterGain && isAudioEnabled) masterGain.gain.value = parseFloat(e.target.value);
-});
-
 // GLTF Loader
 const loader = new THREE.GLTFLoader();
 const dracoLoader = new THREE.DRACOLoader();
@@ -1244,11 +846,10 @@ function loadCaveModel(url, displayName) {
 const DEFAULT_MODEL = 'BuzzardCaveA-v1.glb';
 loadCaveModel(DEFAULT_MODEL, DEFAULT_MODEL);
 
-// --- Stable Ground Surface Raycaster (Never Teleports To Ceiling) ---
+// --- Stable Ground Surface Raycaster ---
 function snapToMeshFloor(deltaTime) {
   if (!currentCaveMesh) return null;
 
-  // Origin stays strictly inside personal head space (max 0.25m above feet in crawl mode)
   const rayOrigin = playerPos.clone();
   rayOrigin.y += Math.min(0.25, Math.max(0.04, eyeHeight * 0.4)); 
   groundRaycaster.set(rayOrigin, downVector);
@@ -1259,7 +860,6 @@ function snapToMeshFloor(deltaTime) {
     let validHit = null;
     for (let i = 0; i < hits.length; i++) {
       const h = hits[i];
-      // Only accept upward-facing floor surfaces (reject ceilings)
       if (h.point.y <= (playerPos.y + 0.3) && (!h.face || h.face.normal.y > 0.4)) {
         validHit = h;
         break;
@@ -1270,11 +870,10 @@ function snapToMeshFloor(deltaTime) {
       const targetY = validHit.point.y + eyeHeight;
       const diffY = targetY - playerPos.y;
 
-      // Limit max climb step so you cannot teleport to overhead ceilings
       if (diffY > 0 && diffY <= 0.6) {
-        playerPos.y = targetY; // Snappy climb
+        playerPos.y = targetY; 
       } else if (diffY <= 0) {
-        playerPos.y = THREE.MathUtils.lerp(playerPos.y, targetY, Math.min(1.0, 18.0 * deltaTime)); // Smooth descent
+        playerPos.y = THREE.MathUtils.lerp(playerPos.y, targetY, Math.min(1.0, 18.0 * deltaTime));
       }
       return validHit.point.y;
     }
@@ -1297,7 +896,6 @@ function animate() {
     spotSpill.target.position.copy(controls.target);
     proximityLight.position.copy(camera.position);
   } else {
-    // 3D Look Direction
     const lookDir = new THREE.Vector3(
       Math.sin(yaw) * Math.cos(pitch),
       Math.sin(pitch),
@@ -1334,31 +932,9 @@ function animate() {
       moveVec.normalize();
       const stepDist = currentScaledSpeed * speedMultiplier * deltaTime;
       playerPos.addScaledVector(moveVec, stepDist);
-
       stepCycle += deltaTime * (isCrawling ? 6.5 : 9.5) * speedMultiplier;
-
-      // Crawling physical exertion grunts (No gravel scraping)
-      if (isCrawling) {
-        gruntTimer += deltaTime;
-        const gruntInterval = Math.max(0.7, 1.2 / Math.max(0.5, currentScaledSpeed));
-        if (gruntTimer >= gruntInterval) {
-          gruntTimer = 0;
-          playCrawlGrunt();
-        }
-      }
     }
 
-    if (isCrawling && isAudioEnabled) {
-      breathTimer += deltaTime;
-      const breathInterval = isMoving ? 1.25 : 1.9;
-      if (breathTimer >= breathInterval) {
-        breathTimer = 0;
-        playHeavyBreath(breathState === 'inhale');
-        breathState = (breathState === 'inhale') ? 'exhale' : 'inhale';
-      }
-    }
-
-    // Apply Ground Snapping
     let floorHitY = null;
     if (activeCameraMode === 'walk') {
       floorHitY = snapToMeshFloor(deltaTime);
@@ -1367,7 +943,7 @@ function animate() {
       if (moveState.moveDown) playerPos.y -= currentScaledSpeed * speedMultiplier * deltaTime;
     }
 
-    // --- Dynamic Head Bobbing ---
+    // Dynamic Head Bobbing
     let bobY = 0;
     let bobX = 0;
     let bobRoll = 0;
@@ -1393,7 +969,6 @@ function animate() {
     camera.position.y += bobY;
     camera.position.addScaledVector(rightHorizontal, bobX);
 
-    // Hard floor buffer: Camera NEVER passes below floor
     if (floorHitY !== null) {
       const minCamY = floorHitY + Math.max(0.002, eyeHeight * 0.8);
       if (camera.position.y < minCamY) camera.position.y = minCamY;
@@ -1403,104 +978,7 @@ function animate() {
     camera.lookAt(targetLook);
     camera.rotation.z += bobRoll;
 
-    // --- Vulture State Machine (Hiss at 5m, Vomit at 1m) ---
-    if (isVultureEnabled && vultureGroup && vultureHead && vultureLeftWing && vultureRightWing) {
-      const distToVulture = playerPos.distanceTo(vultureGroup.position);
-      
-      const dirToPlayer = playerPos.clone().sub(vultureGroup.position);
-      dirToPlayer.y = 0;
-      if (dirToPlayer.lengthSq() > 0.01) {
-        const targetRotY = Math.atan2(dirToPlayer.x, dirToPlayer.z);
-        vultureGroup.rotation.y = THREE.MathUtils.lerp(vultureGroup.rotation.y, targetRotY, 4.5 * deltaTime);
-      }
-
-      if (vultureState === 'dormant') {
-        vultureHead.rotation.x = Math.sin(clock.getElapsedTime() * 1.5) * 0.06;
-        vultureLeftWing.rotation.z = Math.sin(clock.getElapsedTime() * 1.5) * 0.02;
-        vultureRightWing.rotation.z = -Math.sin(clock.getElapsedTime() * 1.5) * 0.02;
-
-        if (distToVulture <= 5.0 && distToVulture > 1.0) {
-          vultureState = 'hissing';
-          vultureTimer = 0;
-        } else if (distToVulture <= 1.0 && distToVulture > 0.05) {
-          vultureState = 'retching';
-          vultureTimer = 0;
-        }
-      } else if (vultureState === 'hissing') {
-        vultureTimer += deltaTime;
-        vultureHead.rotation.x = -0.22 + Math.sin(vultureTimer * 24.0) * 0.05;
-        vultureLeftWing.rotation.z = 0.18 + Math.sin(vultureTimer * 12.0) * 0.04;
-        vultureRightWing.rotation.z = -0.18 - Math.sin(vultureTimer * 12.0) * 0.04;
-
-        if (clock.getElapsedTime() - lastHissTime > 2.0) {
-          lastHissTime = clock.getElapsedTime();
-          playVultureThroatHiss();
-        }
-
-        if (distToVulture <= 1.0 && distToVulture > 0.05) {
-          vultureState = 'retching';
-          vultureTimer = 0;
-        } else if (distToVulture > 6.5) {
-          vultureState = 'recovering';
-        }
-      } else if (vultureState === 'retching') {
-        vultureTimer += deltaTime;
-        vultureHead.position.z = 0.28 - Math.sin(vultureTimer * 16.0) * 0.18;
-        vultureHead.rotation.x = -0.35 + Math.sin(vultureTimer * 16.0) * 0.25;
-        vultureLeftWing.rotation.z = 0.45 + Math.sin(vultureTimer * 20.0) * 0.15;
-        vultureRightWing.rotation.z = -0.45 - Math.sin(vultureTimer * 20.0) * 0.15;
-
-        if (vultureTimer === deltaTime) {
-          playRetchAndVomitSound();
-        }
-
-        if (vultureTimer > 0.42) {
-          vultureState = 'vomiting';
-          vultureTimer = 0;
-          spawnVomitBurst();
-        }
-      } else if (vultureState === 'vomiting') {
-        vultureTimer += deltaTime;
-        const flap = Math.sin(vultureTimer * 26.0) * 0.9;
-        vultureLeftWing.rotation.z = Math.max(0.1, flap);
-        vultureRightWing.rotation.z = -Math.max(0.1, flap);
-        vultureHead.position.z = 0.38 + Math.sin(vultureTimer * 12.0) * 0.08;
-
-        if (vultureTimer > 2.8) {
-          vultureState = 'recovering';
-        }
-      } else if (vultureState === 'recovering') {
-        vultureLeftWing.rotation.z = THREE.MathUtils.lerp(vultureLeftWing.rotation.z, 0, 3.5 * deltaTime);
-        vultureRightWing.rotation.z = THREE.MathUtils.lerp(vultureRightWing.rotation.z, 0, 3.5 * deltaTime);
-        vultureHead.position.z = THREE.MathUtils.lerp(vultureHead.position.z, 0.28, 3.5 * deltaTime);
-
-        if (distToVulture > 6.5) {
-          vultureState = 'dormant';
-        }
-      }
-    }
-
-    // Update Vomit Projectiles
-    for (let i = vomitParticles.length - 1; i >= 0; i--) {
-      const vp = vomitParticles[i];
-      vp.velocity.y -= 9.8 * deltaTime;
-      vp.mesh.position.addScaledVector(vp.velocity, deltaTime);
-      vp.life -= deltaTime;
-
-      if (vp.mesh.position.distanceTo(camera.position) < 0.65) {
-        triggerSlimeSplatter();
-        scene.remove(vp.mesh);
-        vomitParticles.splice(i, 1);
-        continue;
-      }
-
-      if (vp.life <= 0 || vp.mesh.position.y < 0) {
-        scene.remove(vp.mesh);
-        vomitParticles.splice(i, 1);
-      }
-    }
-
-    // Headlamp follow
+    // Headlamp Alignment
     spotCenter.position.copy(camera.position);
     spotCenter.target.position.copy(targetLook);
 
