@@ -346,11 +346,11 @@ STANCE: STANDING | SIZE: 1.0x
             const deltaTime = Math.min(clock.getDelta(), 0.1);
 
             if (controls.isLocked) {
-                moveVector.set(0, 0, 0);
-                const currentPos = controls.getObject().position;
-
+                const controlObject = controls.getObject();
+                
                 if (isFlyMode) {
                     // FLY MODE - PURE FREE FLIGHT
+                    moveVector.set(0, 0, 0);
                     camera.getWorldDirection(lookDirection);
                     sideDirection.copy(lookDirection).cross(camera.up).normalize();
 
@@ -363,7 +363,7 @@ STANCE: STANDING | SIZE: 1.0x
 
                     if (moveVector.lengthSq() > 0) {
                         moveVector.normalize();
-                        currentPos.addScaledVector(moveVector, movementSpeed * speedMultiplier * deltaTime);
+                        controlObject.position.addScaledVector(moveVector, movementSpeed * speedMultiplier * deltaTime);
                     }
 
                     // Handle roll rotation
@@ -373,29 +373,56 @@ STANCE: STANDING | SIZE: 1.0x
                         camera.rotateOnWorldAxis(rollAxis, rollAmount);
                     }
                 } else {
-                    // WALK MODE - GRAVITY AND GROUND CONSTRAINT
+                    // WALK MODE - HORIZONTAL MOVEMENT + GRAVITY
+                    moveVector.set(0, 0, 0);
+                    
                     if (moveState.forward) moveVector.z -= 1;
                     if (moveState.backward) moveVector.z += 1;
                     if (moveState.left) moveVector.x -= 1;
                     if (moveState.right) moveVector.x += 1;
 
-                    moveVector.normalize();
-                    controls.moveForward(-moveVector.z * movementSpeed * speedMultiplier * deltaTime);
-                    controls.moveRight(moveVector.x * movementSpeed * speedMultiplier * deltaTime);
+                    if (moveVector.lengthSq() > 0) {
+                        moveVector.normalize();
+                    }
 
-                    // Apply gravity ALWAYS in walk mode
+                    // Get camera direction for forward/backward
+                    camera.getWorldDirection(lookDirection);
+                    lookDirection.y = 0; // Only horizontal direction
+                    lookDirection.normalize();
+                    
+                    sideDirection.copy(lookDirection).cross(new THREE.Vector3(0, 1, 0)).normalize();
+
+                    // Apply horizontal movement
+                    const horizontalMove = lookDirection
+                        .clone()
+                        .multiplyScalar(-moveVector.z * movementSpeed * speedMultiplier * deltaTime)
+                        .add(sideDirection.clone().multiplyScalar(moveVector.x * movementSpeed * speedMultiplier * deltaTime));
+
+                    controlObject.position.add(horizontalMove);
+
+                    // Apply gravity
                     const groundLevel = FLOOR_LEVEL + targetHeight;
                     
-                    if (currentPos.y > groundLevel) {
-                        // Falling - accelerate downward
+                    if (controlObject.position.y > groundLevel) {
+                        // Falling
                         verticalVelocity += GRAVITY * deltaTime;
-                    } else {
-                        // At or below ground level - snap to ground
+                    } else if (controlObject.position.y < groundLevel) {
+                        // Below ground - reset
                         verticalVelocity = 0;
-                        currentPos.y = groundLevel;
+                        controlObject.position.y = groundLevel;
+                    } else {
+                        // At ground level
+                        verticalVelocity = 0;
                     }
                     
-                    currentPos.y -= verticalVelocity * deltaTime;
+                    // Apply vertical velocity
+                    controlObject.position.y -= verticalVelocity * deltaTime;
+                    
+                    // Final ground clamp
+                    if (controlObject.position.y < groundLevel) {
+                        controlObject.position.y = groundLevel;
+                        verticalVelocity = 0;
+                    }
                 }
             }
 
