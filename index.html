@@ -196,7 +196,7 @@ body, html {
   max-width: 60%;
 }
 
-/* --- Mobile Virtual Joystick & Touch Overlay --- */
+/* --- Mobile Controls --- */
 #mobile-controls {
   position: absolute;
   top: 0;
@@ -434,7 +434,7 @@ let vultureSpawnPos = new THREE.Vector3(0, 0.5, -12);
 let vultureLeftWing = null;
 let vultureRightWing = null;
 let vultureHead = null;
-let vultureState = 'dormant'; // 'dormant', 'hissing', 'retching', 'vomiting', 'recovering'
+let vultureState = 'dormant';
 let vultureTimer = 0;
 let lastHissTime = 0;
 let vomitParticles = [];
@@ -494,7 +494,7 @@ function buildVultureModel() {
   vultureRightWing.add(rWingMesh);
   vultureGroup.add(vultureRightWing);
 
-  // Nest Sticks & Bone Debris
+  // Nest Sticks & Bones
   const nestMat = new THREE.MeshStandardMaterial({ color: 0x2b221d, roughness: 0.95 });
   const boneMat = new THREE.MeshStandardMaterial({ color: 0x8a8475, roughness: 0.8 });
 
@@ -523,7 +523,7 @@ const vomitMat = new THREE.MeshStandardMaterial({ color: 0x76b810, roughness: 0.
 
 function spawnVomitBurst() {
   const beakWorld = new THREE.Vector3();
-  vultureHead.getWorldPosition(beakWorld);
+  if (vultureHead) vultureHead.getWorldPosition(beakWorld);
   beakWorld.y -= 0.05;
 
   const targetDir = playerPos.clone().sub(beakWorld).normalize();
@@ -548,66 +548,33 @@ function triggerSlimeSplatter() {
   setTimeout(() => { overlay.style.opacity = '0'; }, 3800);
 }
 
-// --- Dynamic Interior Cave Floor & Nest Placement ---
+// Fast & Safe Cave Floor Nest Positioning
 function placeNestInsideCaveMesh(mesh) {
-  if (!mesh) return;
+  if (!mesh || !caveBounds) return;
 
-  const rayDown = new THREE.Raycaster();
-  const rayUp = new THREE.Raycaster();
-  const downVec = new THREE.Vector3(0, -1, 0);
-  const upVec = new THREE.Vector3(0, 1, 0);
+  try {
+    mesh.updateMatrixWorld(true);
+    const rayDown = new THREE.Raycaster();
+    const downVec = new THREE.Vector3(0, -1, 0);
 
-  const box = new THREE.Box3().setFromObject(mesh);
-  const min = box.min;
-  const max = box.max;
-  let bestPos = null;
+    // Sample an interior target coordinate in the deep section of the cave
+    const targetX = (caveBounds.x || 30) * 0.15;
+    const targetZ = -(caveBounds.z || 30) * 0.32;
+    const targetY = (caveBounds.y || 5) + 2.0;
 
-  // Generate candidate columns across deep interior quarters
-  const candidates = [];
-  for (let xFrac = 0.2; xFrac <= 0.8; xFrac += 0.1) {
-    for (let zFrac = 0.2; zFrac <= 0.8; zFrac += 0.1) {
-      const x = min.x + (max.x - min.x) * xFrac;
-      const z = min.z + (max.z - min.z) * zFrac;
-      candidates.push(new THREE.Vector3(x, max.y + 1.0, z));
-    }
-  }
-
-  // Prioritize deeper interior chambers
-  candidates.sort((a, b) => (b.z * b.z + b.x * b.x) - (a.z * a.z + a.x * a.x));
-
-  for (let i = 0; i < candidates.length; i++) {
-    const col = candidates[i];
-    rayDown.set(col, downVec);
-    rayDown.far = (max.y - min.y) + 5.0;
+    rayDown.set(new THREE.Vector3(targetX, targetY, targetZ), downVec);
+    rayDown.far = (caveBounds.y || 10) * 3.0;
 
     const hits = rayDown.intersectObject(mesh, true);
-    if (hits.length >= 2) {
-      for (let h = 0; h < hits.length - 1; h++) {
-        const topHit = hits[h];
-        const bottomHit = hits[h + 1];
-        const chamberHeight = topHit.point.y - bottomHit.point.y;
-
-        // Valid enclosed chamber between floor and ceiling
-        if (chamberHeight >= 1.2 && chamberHeight <= 6.5 && bottomHit.point.y >= min.y - 0.5) {
-          // Double verify ceiling exists right above
-          rayUp.set(new THREE.Vector3(bottomHit.point.x, bottomHit.point.y + 0.1, bottomHit.point.z), upVec);
-          rayUp.far = 10.0;
-          if (rayUp.intersectObject(mesh, true).length > 0) {
-            bestPos = bottomHit.point.clone();
-            break;
-          }
-        }
-      }
-      if (bestPos) break;
+    if (hits.length > 0) {
+      // Pick the lowest/deepest interior floor hit
+      const hit = hits[hits.length - 1];
+      vultureSpawnPos.set(hit.point.x, hit.point.y + 0.2, hit.point.z);
+    } else {
+      vultureSpawnPos.set(targetX, Math.max(0.4, (caveBounds.y || 5) * 0.2), targetZ);
     }
-  }
-
-  if (bestPos) {
-    vultureSpawnPos.copy(bestPos);
-    vultureSpawnPos.y += 0.2; // Sit firmly on cave floor
-  } else {
-    // Fallback based on cave bounding box
-    vultureSpawnPos.set(caveBounds.x * 0.2, Math.max(0.4, caveBounds.y * 0.25), -caveBounds.z * 0.38);
+  } catch(e) {
+    vultureSpawnPos.set(0, 0.5, -12);
   }
 
   vultureGroup.position.copy(vultureSpawnPos);
@@ -638,7 +605,6 @@ function initCaveAudio() {
   }
 }
 
-// Low Guttural Vulture Throat Hiss (Warning sound when disturbed)
 function playVultureThroatHiss() {
   if (!isAudioEnabled || !audioCtx || audioCtx.state !== 'running') return;
   const now = audioCtx.currentTime;
@@ -647,7 +613,6 @@ function playVultureThroatHiss() {
   const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
   const data = buffer.getChannelData(0);
 
-  // Low vibrating raspy throat modulation
   for (let i = 0; i < bufferSize; i++) {
     const t = i / audioCtx.sampleRate;
     const throatTremor = 0.65 + 0.35 * Math.sin(2 * Math.PI * 13 * t);
@@ -675,12 +640,11 @@ function playVultureThroatHiss() {
   noise.start(now);
 }
 
-// Authentic Multi-Stage Regurgitation & Vomit Sound
 function playRetchAndVomitSound() {
   if (!isAudioEnabled || !audioCtx || audioCtx.state !== 'running') return;
   const now = audioCtx.currentTime;
 
-  // Stage 1: Deep Spasming Retch / Dry Heave (0.0s - 0.45s)
+  // Stage 1: Retch / Dry Heave
   const retchOsc = audioCtx.createOscillator();
   const retchGain = audioCtx.createGain();
   retchOsc.type = 'sawtooth';
@@ -702,7 +666,7 @@ function playRetchAndVomitSound() {
   retchOsc.start(now);
   retchOsc.stop(now + 0.45);
 
-  // Stage 2: Wet Gurgling Projectile Spew & Splat (starts at +0.35s)
+  // Stage 2: Wet Regurgitation Spew & Splat
   const spewStart = now + 0.35;
   const dur = 0.85;
   const bufferSize = Math.floor(audioCtx.sampleRate * dur);
@@ -736,7 +700,6 @@ function playRetchAndVomitSound() {
   noise.start(spewStart);
 }
 
-// Crawling Scraping & Labored Breathing
 function playCrawlScrapeSound() {
   if (!isAudioEnabled || !audioCtx || audioCtx.state !== 'running') return;
   const now = audioCtx.currentTime;
@@ -811,4 +774,725 @@ function playHeavyBreath(isInhale) {
 let currentCaveMesh = null;
 let caveBounds = null;
 let modelName = 'Loading...';
-let renderS
+let renderStyle = 'lit';
+let activeCameraMode = 'orbit';
+let isPointerLocked = false;
+
+let eyeHeight = 1.60; 
+let baseMoveSpeed = 5.5; 
+let currentScaledSpeed = 5.5;
+
+const groundRaycaster = new THREE.Raycaster();
+const downVector = new THREE.Vector3(0, -1, 0);
+
+const playerPos = new THREE.Vector3(0, 3, 0);
+let yaw = 0;
+let pitch = 0;
+let speedMultiplier = 1;
+const moveState = { forward: false, backward: false, left: false, right: false, moveUp: false, moveDown: false };
+const joystickVector = new THREE.Vector2(0, 0);
+
+// DOM Elements
+const controlPanel = document.getElementById('control-panel');
+const btnToggleMenu = document.getElementById('btn-toggle-menu');
+const btnExitFPS = document.getElementById('btn-exit-fps');
+const mobileControls = document.getElementById('mobile-controls');
+const fileInput = document.getElementById('file-input');
+const btnLoadFile = document.getElementById('btn-load-file');
+const btnEnterFPS = document.getElementById('btn-enter-fps');
+const btnResetView = document.getElementById('btn-reset-view');
+const btnModeOrbit = document.getElementById('btn-mode-orbit');
+const btnModeWalk = document.getElementById('btn-mode-walk');
+const btnModeFly = document.getElementById('btn-mode-fly');
+
+const btnToggleVulture = document.getElementById('btn-toggle-vulture');
+const btnTpVulture = document.getElementById('btn-tp-vulture');
+
+const sldHeight = document.getElementById('sld-height');
+const lblHeight = document.getElementById('lbl-height');
+const btnPresetStand = document.getElementById('btn-preset-stand');
+const btnPresetCrouch = document.getElementById('btn-preset-crouch');
+const btnPresetCrawl = document.getElementById('btn-preset-crawl');
+const btnPresetMicro = document.getElementById('btn-preset-micro');
+
+const btnToggleAudio = document.getElementById('btn-toggle-audio');
+const sldVolume = document.getElementById('sld-volume');
+
+const btnRenderLit = document.getElementById('btn-render-lit');
+const btnRenderUnlit = document.getElementById('btn-render-unlit');
+const btnRenderWire = document.getElementById('btn-render-wire');
+const sldBrightness = document.getElementById('sld-brightness');
+const lblBrightness = document.getElementById('lbl-brightness');
+const sldAmbient = document.getElementById('sld-ambient');
+const lblAmbient = document.getElementById('lbl-ambient');
+const sldExposure = document.getElementById('sld-exposure');
+const lblExposure = document.getElementById('lbl-exposure');
+const statusDisplay = document.getElementById('status-display');
+const helpToast = document.getElementById('help-toast');
+
+if (window.innerWidth < 768) {
+  controlPanel.classList.add('hidden');
+}
+
+btnToggleMenu.addEventListener('click', () => controlPanel.classList.toggle('hidden'));
+controlPanel.addEventListener('click', (e) => e.stopPropagation());
+
+btnToggleVulture.addEventListener('click', () => {
+  isVultureEnabled = !isVultureEnabled;
+  vultureGroup.visible = isVultureEnabled;
+  btnToggleVulture.innerText = `🦅 Vulture: ${isVultureEnabled ? 'ON' : 'OFF'}`;
+  btnToggleVulture.classList.toggle('active', isVultureEnabled);
+});
+
+btnTpVulture.addEventListener('click', () => {
+  playerPos.copy(vultureGroup.position).add(new THREE.Vector3(0, eyeHeight, 3.5));
+  yaw = Math.PI;
+  pitch = -0.05;
+  setCameraMode('walk');
+});
+
+// Audio Listeners
+btnToggleAudio.addEventListener('click', () => {
+  initCaveAudio();
+  if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+  isAudioEnabled = !isAudioEnabled;
+  btnToggleAudio.innerText = `🔊 Audio: ${isAudioEnabled ? 'ON' : 'OFF'}`;
+  btnToggleAudio.classList.toggle('active', isAudioEnabled);
+  if (masterGain) masterGain.gain.value = isAudioEnabled ? parseFloat(sldVolume.value) : 0;
+});
+
+sldVolume.addEventListener('input', (e) => {
+  if (masterGain && isAudioEnabled) masterGain.gain.value = parseFloat(e.target.value);
+});
+
+// Height & Speed
+function updateHeightAndSpeed(val) {
+  eyeHeight = parseFloat(val);
+  sldHeight.value = eyeHeight.toFixed(2);
+
+  const normalized = Math.max(0.01, eyeHeight / 1.6);
+  currentScaledSpeed = Math.max(0.08, baseMoveSpeed * Math.pow(normalized, 0.85));
+
+  const heightDisplay = eyeHeight < 0.1 
+    ? `${(eyeHeight * 100).toFixed(1)} cm` 
+    : `${eyeHeight.toFixed(2)} m`;
+  lblHeight.innerText = `Height: ${heightDisplay} | Speed: ${currentScaledSpeed.toFixed(2)} m/s`;
+
+  btnPresetStand.classList.toggle('active', Math.abs(eyeHeight - 1.6) < 0.05);
+  btnPresetCrouch.classList.toggle('active', Math.abs(eyeHeight - 0.8) < 0.05);
+  btnPresetCrawl.classList.toggle('active', Math.abs(eyeHeight - 0.2) < 0.05);
+  btnPresetMicro.classList.toggle('active', eyeHeight <= 0.02);
+
+  updateStatusHUD();
+}
+
+sldHeight.addEventListener('input', (e) => updateHeightAndSpeed(e.target.value));
+btnPresetStand.addEventListener('click', () => updateHeightAndSpeed(1.60));
+btnPresetCrouch.addEventListener('click', () => updateHeightAndSpeed(0.80));
+btnPresetCrawl.addEventListener('click', () => updateHeightAndSpeed(0.20));
+btnPresetMicro.addEventListener('click', () => updateHeightAndSpeed(0.01));
+
+// Camera Mode Switcher
+function setCameraMode(mode) {
+  initCaveAudio();
+  if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+
+  activeCameraMode = mode;
+  btnModeOrbit.classList.toggle('active', mode === 'orbit');
+  btnModeWalk.classList.toggle('active', mode === 'walk');
+  btnModeFly.classList.toggle('active', mode === 'fly');
+
+  if (mode === 'orbit') {
+    controls.enabled = true;
+    mobileControls.style.display = 'none';
+    btnExitFPS.style.display = 'none';
+    helpToast.innerHTML = isTouchDevice 
+      ? '🖱️ <b>Orbit Mode:</b> 1-finger rotate | 2-finger zoom | Double-tap cave to enter'
+      : '🖱️ <b>Orbit Mode:</b> Drag to rotate | Scroll to zoom | Double-click cave to enter';
+    if (document.exitPointerLock) document.exitPointerLock();
+  } else {
+    controls.enabled = false;
+    if (isTouchDevice) {
+      mobileControls.style.display = 'block';
+      btnExitFPS.style.display = 'block';
+      controlPanel.classList.add('hidden');
+      helpToast.innerHTML = mode === 'walk' 
+        ? '🚶 <b>Walk Mode:</b> Floor hugging active | Watch out for vultures!'
+        : '✈️ <b>Fly Mode:</b> Move in sight line';
+    } else {
+      helpToast.innerHTML = mode === 'walk'
+        ? '🚶 <b>Walk Mode:</b> W/A/S/D follows cave floor | ESC: Unlock'
+        : '✈️ <b>Fly Mode:</b> W moves in sight line | ESC: Unlock';
+      try { renderer.domElement.requestPointerLock(); } catch(e) {}
+    }
+  }
+  updateStatusHUD();
+}
+
+btnModeOrbit.addEventListener('click', () => setCameraMode('orbit'));
+btnModeWalk.addEventListener('click', () => setCameraMode('walk'));
+btnModeFly.addEventListener('click', () => setCameraMode('fly'));
+btnEnterFPS.addEventListener('click', () => setCameraMode('walk'));
+btnExitFPS.addEventListener('click', () => setCameraMode('orbit'));
+
+document.addEventListener('pointerlockchange', () => {
+  isPointerLocked = (document.pointerLockElement === renderer.domElement);
+  if (!isPointerLocked && !isTouchDevice && activeCameraMode !== 'orbit') {
+    setCameraMode('orbit');
+  }
+});
+
+function handleDoubleTap(clientX, clientY) {
+  if (activeCameraMode !== 'orbit' || !currentCaveMesh) return;
+  const raycaster = new THREE.Raycaster();
+  const mouse = new THREE.Vector2(
+    (clientX / window.innerWidth) * 2 - 1,
+    -(clientY / window.innerHeight) * 2 + 1
+  );
+  raycaster.setFromCamera(mouse, camera);
+  const intersects = raycaster.intersectObject(currentCaveMesh, true);
+  if (intersects.length > 0) {
+    playerPos.copy(intersects[0].point);
+    playerPos.y += eyeHeight;
+    setCameraMode('walk');
+  }
+}
+
+renderer.domElement.addEventListener('dblclick', (e) => handleDoubleTap(e.clientX, e.clientY));
+
+// Touch swipe look handling
+let touchLookId = null;
+let lastTouchX = 0;
+let lastTouchY = 0;
+
+window.addEventListener('touchstart', (e) => {
+  if (activeCameraMode === 'orbit') return;
+  for (let i = 0; i < e.changedTouches.length; i++) {
+    const t = e.changedTouches[i];
+    if (t.clientX > window.innerWidth * 0.35 && touchLookId === null) {
+      touchLookId = t.identifier;
+      lastTouchX = t.clientX;
+      lastTouchY = t.clientY;
+    }
+  }
+}, { passive: false });
+
+window.addEventListener('touchmove', (e) => {
+  if (activeCameraMode === 'orbit') return;
+  for (let i = 0; i < e.changedTouches.length; i++) {
+    const t = e.changedTouches[i];
+    if (t.identifier === touchLookId) {
+      const dx = t.clientX - lastTouchX;
+      const dy = t.clientY - lastTouchY;
+      yaw += dx * 0.005;
+      pitch -= dy * 0.005;
+      pitch = Math.max(-Math.PI / 2.05, Math.min(Math.PI / 2.05, pitch));
+      lastTouchX = t.clientX;
+      lastTouchY = t.clientY;
+    }
+  }
+}, { passive: false });
+
+window.addEventListener('touchend', (e) => {
+  for (let i = 0; i < e.changedTouches.length; i++) {
+    if (e.changedTouches[i].identifier === touchLookId) touchLookId = null;
+  }
+});
+
+// Virtual Joystick
+const joystickZone = document.getElementById('joystick-zone');
+const joystickKnob = document.getElementById('joystick-knob');
+let joystickTouchId = null;
+const maxRadius = 35;
+
+joystickZone.addEventListener('touchstart', (e) => {
+  const t = e.changedTouches[0];
+  joystickTouchId = t.identifier;
+  updateJoystick(t.clientX, t.clientY);
+}, { passive: false });
+
+joystickZone.addEventListener('touchmove', (e) => {
+  for (let i = 0; i < e.changedTouches.length; i++) {
+    if (e.changedTouches[i].identifier === joystickTouchId) {
+      updateJoystick(e.changedTouches[i].clientX, e.changedTouches[i].clientY);
+    }
+  }
+}, { passive: false });
+
+function resetJoystick() {
+  joystickTouchId = null;
+  joystickKnob.style.transform = 'translate(0px, 0px)';
+  joystickVector.set(0, 0);
+}
+joystickZone.addEventListener('touchend', resetJoystick);
+joystickZone.addEventListener('touchcancel', resetJoystick);
+
+function updateJoystick(clientX, clientY) {
+  const rect = joystickZone.getBoundingClientRect();
+  const centerX = rect.left + rect.width / 2;
+  const centerY = rect.top + rect.height / 2;
+  let dx = clientX - centerX;
+  let dy = clientY - centerY;
+  const dist = Math.sqrt(dx * dx + dy * dy);
+
+  if (dist > maxRadius) {
+    dx = (dx / dist) * maxRadius;
+    dy = (dy / dist) * maxRadius;
+  }
+  joystickKnob.style.transform = `translate(${dx}px, ${dy}px)`;
+  joystickVector.set(dx / maxRadius, -dy / maxRadius);
+}
+
+// Mobile Fly Buttons
+const btnTouchUp = document.getElementById('btn-touch-up');
+const btnTouchDown = document.getElementById('btn-touch-down');
+btnTouchUp.addEventListener('touchstart', (e) => { e.preventDefault(); moveState.moveUp = true; });
+btnTouchUp.addEventListener('touchend', () => { moveState.moveUp = false; });
+btnTouchDown.addEventListener('touchstart', (e) => { e.preventDefault(); moveState.moveDown = true; });
+btnTouchDown.addEventListener('touchend', () => { moveState.moveDown = false; });
+
+// Render Styles
+function setRenderStyle(style) {
+  renderStyle = style;
+  btnRenderLit.classList.toggle('active', style === 'lit');
+  btnRenderUnlit.classList.toggle('active', style === 'unlit');
+  btnRenderWire.classList.toggle('active', style === 'wire');
+  applyMaterialStyle();
+}
+btnRenderLit.addEventListener('click', () => setRenderStyle('lit'));
+btnRenderUnlit.addEventListener('click', () => setRenderStyle('unlit'));
+btnRenderWire.addEventListener('click', () => setRenderStyle('wire'));
+
+function applyMaterialStyle() {
+  if (!currentCaveMesh) return;
+  const maxAniso = renderer.capabilities.getMaxAnisotropy();
+
+  currentCaveMesh.traverse((child) => {
+    if (child.isMesh && child.material) {
+      if (child.geometry) child.geometry.computeVertexNormals();
+      const mats = Array.isArray(child.material) ? child.material : [child.material];
+      
+      mats.forEach((m) => {
+        m.side = THREE.DoubleSide;
+        m.transparent = false;
+        m.opacity = 1.0;
+        m.vertexColors = false;
+        m.depthWrite = true;
+
+        if (m.map) {
+          m.map.encoding = THREE.sRGBEncoding;
+          m.map.anisotropy = maxAniso;
+          m.map.needsUpdate = true;
+          m.color.setHex(0xffffff);
+        }
+
+        if (renderStyle === 'wire') {
+          m.wireframe = true;
+          m.emissive.setHex(0x00ff88);
+          m.emissiveMap = null;
+        } else if (renderStyle === 'unlit') {
+          m.wireframe = false;
+          m.emissive.setHex(0xffffff);
+          m.emissiveMap = m.map || null;
+        } else {
+          m.wireframe = false;
+          m.emissive.setHex(0x000000);
+          m.emissiveMap = null;
+          m.roughness = 0.95;
+          m.metalness = 0.0;
+          if (!m.map) m.color.setHex(0x6e7682);
+        }
+        m.needsUpdate = true;
+      });
+    }
+  });
+}
+
+// Sliders
+sldBrightness.addEventListener('input', (e) => {
+  const val = parseFloat(e.target.value);
+  spotCenter.intensity = val;
+  spotSpill.intensity = val * 0.35;
+  proximityLight.intensity = val * 0.04;
+  lblBrightness.innerText = `Headlamp Power: ${val.toFixed(1)}`;
+});
+sldAmbient.addEventListener('input', (e) => {
+  const val = parseFloat(e.target.value);
+  ambientLight.intensity = val;
+  hemiLight.intensity = val * 0.5;
+  lblAmbient.innerText = `Ambient Light: ${val.toFixed(2)}`;
+});
+sldExposure.addEventListener('input', (e) => {
+  const val = parseFloat(e.target.value);
+  renderer.toneMappingExposure = val;
+  lblExposure.innerText = `Camera Exposure: ${val.toFixed(2)}`;
+});
+
+function frameModel() {
+  if (!caveBounds) return;
+  const maxDim = Math.max(caveBounds.x, caveBounds.y, caveBounds.z);
+  camera.position.set(0, maxDim * 0.7, maxDim * 1.3);
+  controls.target.set(0, caveBounds.y * 0.4, 0);
+  controls.update();
+}
+btnResetView.addEventListener('click', () => {
+  setCameraMode('orbit');
+  frameModel();
+});
+
+function updateStatusHUD() {
+  const heightStr = eyeHeight < 0.1 ? `${(eyeHeight * 100).toFixed(1)}cm` : `${eyeHeight.toFixed(2)}m`;
+  const modeLabel = activeCameraMode === 'orbit' ? 'ORBIT' : (activeCameraMode === 'walk' ? `WALK [H:${heightStr}]` : 'FLY 3D');
+  statusDisplay.innerHTML = 
+    `MODEL: ${modelName}<br/>` +
+    `CAMERA: ${modeLabel} | SPEED: ${currentScaledSpeed.toFixed(2)} m/s<br/>` +
+    `POS: [X:${playerPos.x.toFixed(1)} Y:${playerPos.y.toFixed(1)} Z:${playerPos.z.toFixed(1)}]`;
+}
+
+// Keyboard controls
+document.addEventListener('keydown', (e) => {
+  if (e.code === 'Escape') { if (activeCameraMode !== 'orbit') setCameraMode('orbit'); return; }
+  if (e.code === 'KeyW') moveState.forward = true;
+  if (e.code === 'KeyS') moveState.backward = true;
+  if (e.code === 'KeyA') moveState.left = true;
+  if (e.code === 'KeyD') moveState.right = true;
+  if (e.code === 'Space') moveState.moveUp = true;
+  if (e.code === 'ControlLeft' || e.code === 'ControlRight') moveState.moveDown = true;
+  if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') speedMultiplier = 1.8;
+  if (e.code === 'KeyF') setCameraMode(activeCameraMode === 'walk' ? 'fly' : 'walk');
+});
+document.addEventListener('keyup', (e) => {
+  if (e.code === 'KeyW') moveState.forward = false;
+  if (e.code === 'KeyS') moveState.backward = false;
+  if (e.code === 'KeyA') moveState.left = false;
+  if (e.code === 'KeyD') moveState.right = false;
+  if (e.code === 'Space') moveState.moveUp = false;
+  if (e.code === 'ControlLeft' || e.code === 'ControlRight') moveState.moveDown = false;
+  if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') speedMultiplier = 1;
+});
+
+// Mouse Look
+document.addEventListener('mousemove', (e) => {
+  if (!isPointerLocked) return;
+  yaw += e.movementX * 0.0025;
+  pitch -= e.movementY * 0.0025;
+  pitch = Math.max(-Math.PI / 2.05, Math.min(Math.PI / 2.05, pitch));
+});
+
+// File Loader handlers
+btnLoadFile.addEventListener('click', () => fileInput.click());
+fileInput.addEventListener('change', (e) => {
+  if (e.target.files[0]) loadCaveModel(URL.createObjectURL(e.target.files[0]), e.target.files[0].name);
+});
+
+// GLTF Loader
+const loader = new THREE.GLTFLoader();
+const dracoLoader = new THREE.DRACOLoader();
+dracoLoader.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.6/');
+loader.setDRACOLoader(dracoLoader);
+
+function loadCaveModel(url, displayName) {
+  modelName = `Loading ${displayName}... (0%)`;
+  updateStatusHUD();
+
+  const safeUrl = (url.startsWith('blob:') || url.startsWith('http')) 
+    ? url 
+    : encodeURI(url.startsWith('./') ? url : './' + url);
+
+  loader.load(
+    safeUrl,
+    (gltf) => {
+      try {
+        if (currentCaveMesh) scene.remove(currentCaveMesh);
+        currentCaveMesh = gltf.scene;
+
+        const box = new THREE.Box3().setFromObject(currentCaveMesh);
+        const center = box.getCenter(new THREE.Vector3());
+        caveBounds = box.getSize(new THREE.Vector3());
+
+        currentCaveMesh.position.x -= center.x;
+        currentCaveMesh.position.y -= box.min.y;
+        currentCaveMesh.position.z -= center.z;
+
+        applyMaterialStyle();
+        scene.add(currentCaveMesh);
+
+        // Position Nest Inside Cave
+        placeNestInsideCaveMesh(currentCaveMesh);
+
+        gridHelper.position.y = 0;
+        gridHelper.scale.set(Math.max(1, caveBounds.x * 0.04), 1, Math.max(1, caveBounds.z * 0.04));
+
+        playerPos.set(0, Math.max(1.5, caveBounds.y * 0.3), 0);
+        modelName = `${displayName} (${Math.round(caveBounds.x)}m × ${Math.round(caveBounds.y)}m × ${Math.round(caveBounds.z)}m)`;
+        
+        setCameraMode('orbit');
+        frameModel();
+        updateStatusHUD();
+      } catch(e) {
+        console.error('Setup error:', e);
+      }
+    },
+    (xhr) => {
+      if (xhr.lengthComputable) {
+        const percent = Math.round((xhr.loaded / xhr.total) * 100);
+        modelName = `Downloading ${displayName}... (${percent}%)`;
+        updateStatusHUD();
+      }
+    },
+    (err) => {
+      console.error('GLB Load failed:', err);
+      modelName = `⚠️ Could not find "${displayName}" in repo`;
+      updateStatusHUD();
+    }
+  );
+}
+
+const DEFAULT_MODEL = 'BuzzardCaveA-v1.glb';
+loadCaveModel(DEFAULT_MODEL, DEFAULT_MODEL);
+
+// Ground Snapping
+function snapToMeshFloor(deltaTime) {
+  if (!currentCaveMesh) return;
+
+  const rayOrigin = playerPos.clone();
+  rayOrigin.y += Math.max(0.2, eyeHeight * 0.8); 
+  groundRaycaster.set(rayOrigin, downVector);
+  groundRaycaster.far = Math.max(3.0, eyeHeight * 4.0);
+
+  const hits = groundRaycaster.intersectObject(currentCaveMesh, true);
+  if (hits.length > 0) {
+    let validHit = null;
+    for (let i = 0; i < hits.length; i++) {
+      if (hits[i].distance > 0.002) {
+        validHit = hits[i];
+        break;
+      }
+    }
+    if (validHit) {
+      const targetY = validHit.point.y + eyeHeight;
+      playerPos.y = THREE.MathUtils.lerp(playerPos.y, targetY, Math.min(1.0, 14.0 * deltaTime));
+    }
+  }
+}
+
+// Animation Loop
+const clock = new THREE.Clock();
+
+function animate() {
+  requestAnimationFrame(animate);
+  const deltaTime = Math.min(clock.getDelta(), 0.1);
+
+  if (activeCameraMode === 'orbit') {
+    controls.update();
+    spotCenter.position.copy(camera.position);
+    spotCenter.target.position.copy(controls.target);
+    spotSpill.position.copy(camera.position);
+    spotSpill.target.position.copy(controls.target);
+    proximityLight.position.copy(camera.position);
+  } else {
+    // 3D Look Direction
+    const lookDir = new THREE.Vector3(
+      Math.sin(yaw) * Math.cos(pitch),
+      Math.sin(pitch),
+      -Math.cos(yaw) * Math.cos(pitch)
+    ).normalize();
+
+    let forward, right;
+
+    if (activeCameraMode === 'fly') {
+      forward = lookDir.clone();
+      const worldUp = new THREE.Vector3(0, 1, 0);
+      right = new THREE.Vector3().crossVectors(forward, worldUp).normalize();
+      if (right.lengthSq() < 0.001) right = new THREE.Vector3(Math.cos(yaw), 0, Math.sin(yaw));
+    } else {
+      forward = new THREE.Vector3(Math.sin(yaw), 0, -Math.cos(yaw)).normalize();
+      right = new THREE.Vector3(Math.cos(yaw), 0, Math.sin(yaw)).normalize();
+    }
+
+    const moveVec = new THREE.Vector3();
+    if (moveState.forward) moveVec.add(forward);
+    if (moveState.backward) moveVec.sub(forward);
+    if (moveState.left) moveVec.sub(right);
+    if (moveState.right) moveVec.add(right);
+
+    if (joystickVector.lengthSq() > 0.01) {
+      moveVec.addScaledVector(forward, joystickVector.y);
+      moveVec.addScaledVector(right, joystickVector.x);
+    }
+
+    const isMoving = moveVec.lengthSq() > 0.001;
+    const isCrawling = (eyeHeight < 1.0);
+
+    if (isMoving) {
+      moveVec.normalize();
+      const stepDist = currentScaledSpeed * speedMultiplier * deltaTime;
+      playerPos.addScaledVector(moveVec, stepDist);
+
+      stepCycle += deltaTime * (isCrawling ? 7.0 : 10.0);
+
+      // Crawling scrape sound
+      if (isCrawling) {
+        stepTimer += deltaTime;
+        const crawlInterval = Math.max(0.28, 0.45 / Math.max(0.4, currentScaledSpeed));
+        if (stepTimer >= crawlInterval) {
+          stepTimer = 0;
+          playCrawlScrapeSound();
+        }
+      }
+    }
+
+    // Heavy Labored Breathing while in Crawling stance (<1.0m)
+    if (isCrawling && isAudioEnabled) {
+      breathTimer += deltaTime;
+      const breathInterval = isMoving ? 1.45 : 2.2;
+      if (breathTimer >= breathInterval) {
+        breathTimer = 0;
+        playHeavyBreath(breathState === 'inhale');
+        breathState = (breathState === 'inhale') ? 'exhale' : 'inhale';
+      }
+    }
+
+    if (activeCameraMode === 'walk') {
+      snapToMeshFloor(deltaTime);
+    } else {
+      if (moveState.moveUp) playerPos.y += currentScaledSpeed * speedMultiplier * deltaTime;
+      if (moveState.moveDown) playerPos.y -= currentScaledSpeed * speedMultiplier * deltaTime;
+    }
+
+    // --- Vulture State Machine & Dynamic Response ---
+    if (isVultureEnabled && vultureGroup && vultureHead && vultureLeftWing && vultureRightWing) {
+      const distToVulture = playerPos.distanceTo(vultureGroup.position);
+      
+      const dirToPlayer = playerPos.clone().sub(vultureGroup.position);
+      dirToPlayer.y = 0;
+      if (dirToPlayer.lengthSq() > 0.01) {
+        const targetRotY = Math.atan2(dirToPlayer.x, dirToPlayer.z);
+        vultureGroup.rotation.y = THREE.MathUtils.lerp(vultureGroup.rotation.y, targetRotY, 4.5 * deltaTime);
+      }
+
+      if (vultureState === 'dormant') {
+        vultureHead.rotation.x = Math.sin(clock.getElapsedTime() * 1.5) * 0.06;
+        vultureLeftWing.rotation.z = Math.sin(clock.getElapsedTime() * 1.5) * 0.02;
+        vultureRightWing.rotation.z = -Math.sin(clock.getElapsedTime() * 1.5) * 0.02;
+
+        if (distToVulture <= 8.0 && distToVulture > 4.6) {
+          vultureState = 'hissing';
+          vultureTimer = 0;
+        } else if (distToVulture <= 4.6 && distToVulture > 0.5) {
+          vultureState = 'retching';
+          vultureTimer = 0;
+        }
+      } else if (vultureState === 'hissing') {
+        vultureTimer += deltaTime;
+        vultureHead.rotation.x = -0.22 + Math.sin(vultureTimer * 24.0) * 0.05;
+        vultureLeftWing.rotation.z = 0.18 + Math.sin(vultureTimer * 12.0) * 0.04;
+        vultureRightWing.rotation.z = -0.18 - Math.sin(vultureTimer * 12.0) * 0.04;
+
+        if (clock.getElapsedTime() - lastHissTime > 2.2) {
+          lastHissTime = clock.getElapsedTime();
+          playVultureThroatHiss();
+        }
+
+        if (distToVulture <= 4.6 && distToVulture > 0.5) {
+          vultureState = 'retching';
+          vultureTimer = 0;
+        } else if (distToVulture > 9.0) {
+          vultureState = 'recovering';
+        }
+      } else if (vultureState === 'retching') {
+        vultureTimer += deltaTime;
+        vultureHead.position.z = 0.28 - Math.sin(vultureTimer * 16.0) * 0.18;
+        vultureHead.rotation.x = -0.35 + Math.sin(vultureTimer * 16.0) * 0.25;
+        vultureLeftWing.rotation.z = 0.45 + Math.sin(vultureTimer * 20.0) * 0.15;
+        vultureRightWing.rotation.z = -0.45 - Math.sin(vultureTimer * 20.0) * 0.15;
+
+        if (vultureTimer === deltaTime) {
+          playRetchAndVomitSound();
+        }
+
+        if (vultureTimer > 0.42) {
+          vultureState = 'vomiting';
+          vultureTimer = 0;
+          spawnVomitBurst();
+        }
+      } else if (vultureState === 'vomiting') {
+        vultureTimer += deltaTime;
+        const flap = Math.sin(vultureTimer * 26.0) * 0.9;
+        vultureLeftWing.rotation.z = Math.max(0.1, flap);
+        vultureRightWing.rotation.z = -Math.max(0.1, flap);
+        vultureHead.position.z = 0.38 + Math.sin(vultureTimer * 12.0) * 0.08;
+
+        if (vultureTimer > 2.8) {
+          vultureState = 'recovering';
+        }
+      } else if (vultureState === 'recovering') {
+        vultureLeftWing.rotation.z = THREE.MathUtils.lerp(vultureLeftWing.rotation.z, 0, 3.5 * deltaTime);
+        vultureRightWing.rotation.z = THREE.MathUtils.lerp(vultureRightWing.rotation.z, 0, 3.5 * deltaTime);
+        vultureHead.position.z = THREE.MathUtils.lerp(vultureHead.position.z, 0.28, 3.5 * deltaTime);
+
+        if (distToVulture > 9.0) {
+          vultureState = 'dormant';
+        }
+      }
+    }
+
+    // --- Update Vomit Particles Physics ---
+    for (let i = vomitParticles.length - 1; i >= 0; i--) {
+      const vp = vomitParticles[i];
+      vp.velocity.y -= 9.8 * deltaTime;
+      vp.mesh.position.addScaledVector(vp.velocity, deltaTime);
+      vp.life -= deltaTime;
+
+      if (vp.mesh.position.distanceTo(camera.position) < 0.65) {
+        triggerSlimeSplatter();
+        scene.remove(vp.mesh);
+        vomitParticles.splice(i, 1);
+        continue;
+      }
+
+      if (vp.life <= 0 || vp.mesh.position.y < 0) {
+        scene.remove(vp.mesh);
+        vomitParticles.splice(i, 1);
+      }
+    }
+
+    // Natural crawl sway / head bobbing
+    let bobY = 0;
+    let bobRoll = 0;
+    if (isMoving && activeCameraMode === 'walk') {
+      const bobMagnitude = isCrawling ? (eyeHeight * 0.04) : 0.035;
+      bobY = Math.sin(stepCycle) * bobMagnitude;
+      bobRoll = Math.cos(stepCycle * 0.5) * 0.008;
+    }
+
+    camera.position.set(playerPos.x, playerPos.y + bobY, playerPos.z);
+    camera.rotation.z = bobRoll;
+
+    const targetLook = camera.position.clone().add(lookDir);
+    camera.lookAt(targetLook);
+
+    // Headlamp follow
+    spotCenter.position.copy(camera.position);
+    spotCenter.target.position.copy(targetLook);
+
+    spotSpill.position.copy(camera.position);
+    spotSpill.target.position.copy(targetLook);
+
+    proximityLight.position.copy(camera.position);
+
+    updateStatusHUD();
+  }
+
+  renderer.render(scene, camera);
+}
+animate();
+
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+</script>
+</body>
+</html>
