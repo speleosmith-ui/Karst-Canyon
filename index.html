@@ -1,1 +1,434 @@
-<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n    <meta charset=\"UTF-8\">\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n    <title>3D Cave Advanced Explorer</title>\n    <style>\n        body, html {\n            margin: 0;\n            padding: 0;\n            width: 100%;\n            height: 100%;\n            overflow: hidden;\n            background: #050505;\n            font-family: sans-serif;\n            user-select: none;\n        }\n        #blocker {\n            position: absolute;\n            width: 100%;\n            height: 100%;\n            background-color: rgba(0,0,0,0.85);\n            display: flex;\n            justify-content: center;\n            align-items: center;\n            color: white;\n            text-align: center;\n            cursor: pointer;\n            z-index: 10;\n        }\n        #instructions {\n            font-size: 18px;\n            line-height: 1.6;\n            background: rgba(20,20,20,0.9);\n            padding: 30px;\n            border-radius: 10px;\n            border: 1px solid #444;\n        }\n        #control-panel {\n            position: absolute;\n            top: 20px;\n            right: 20px;\n            background: rgba(15, 15, 15, 0.9);\n            color: white;\n            padding: 20px;\n            border-radius: 8px;\n            border: 1px solid #555;\n            z-index: 20;\n            width: 280px;\n            display: flex;\n            flex-direction: column;\n            gap: 15px;\n            pointer-events: auto;\n            cursor: default;\n        }\n        .control-group {\n            display: flex;\n            flex-direction: column;\n            gap: 5px;\n        }\n        .control-group label {\n            font-size: 11px;\n            text-transform: uppercase;\n            letter-spacing: 1px;\n            color: #bbb;\n        }\n        .slider {\n            width: 100%;\n            cursor: pointer;\n        }\n        .btn-group {\n            display: flex;\n            gap: 5px;\n        }\n        .toggle-btn {\n            flex: 1;\n            background: #222;\n            border: 1px solid #555;\n            color: #ccc;\n            padding: 8px;\n            cursor: pointer;\n            border-radius: 4px;\n            font-size: 12px;\n            transition: all 0.2s;\n        }\n        .toggle-btn.active {\n            background: #007acc;\n            border-color: #0098ff;\n            color: white;\n            font-weight: bold;\n        }\n        #status-display {\n            position: absolute;\n            bottom: 20px;\n            left: 20px;\n            color: #00ff00;\n            font-family: monospace;\n            font-size: 12px;\n            background: rgba(0,0,0,0.7);\n            padding: 10px;\n            border-radius: 4px;\n            z-index: 5;\n            pointer-events: none;\n            line-height: 1.4;\n        }\n    </style>\n    <script src=\"https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js\"></script>\n    <script src=\"https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/PointerLockControls.js\"></script>\n    <script src=\"https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js\"></script>\n    <script src=\"https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/DRACOLoader.js\"></script>\n</head>\n<body>\n\n    <div id=\"blocker\">\n        <div id=\"instructions\">\n            <span style=\"font-size:32px; font-weight:bold; color: #00baee;\">Click to Enter Cave</span><br/><br/>\n            <strong>Look Around:</strong> Move your Mouse<br/>\n            <strong>Move (3D Fly/Walk):</strong> WASD Keys<br/>\n            <strong>Vertical Movement (Fly Mode):</strong> SPACE (Up) / CTRL (Down)<br/>\n            <strong>Roll (Fly Mode):</strong> Q / E Keys<br/>\n            <strong>Speed Boost:</strong> Hold SHIFT (2x)<br/><br/>\n            <span style=\"color:#ffcc00; font-weight:bold;\">Stance Adjustment Keys:</span><br/>\n            <strong>1 Key:</strong> Stand/Walk Mode<br/>\n            <strong>2 Key:</strong> Knee Crawl Mode (Smaller)<br/>\n            <strong>3 Key:</strong> Tiny Crawl Mode (Microscopic - fits through cracks!)<br/><br/>\n            Press <strong>ESC</strong> to release mouse and adjust menu controls.\n        </div>\n    </div>\n\n    <div id=\"control-panel\">\n        <div class=\"control-group\">\n            <label>Navigation Engine Mode</label>\n            <div class=\"btn-group\">\n                <button id=\"btn-fly\" class=\"toggle-btn active\">Fly Mode</button>\n                <button id=\"btn-walk\" class=\"toggle-btn\">Walk Mode</button>\n            </div>\n        </div>\n        <div class=\"control-group\">\n            <label id=\"lbl-brightness\">Flashlight Intensity: 10.0</label>\n            <input type=\"range\" id=\"sld-brightness\" class=\"slider\" min=\"0\" max=\"30\" step=\"0.5\" value=\"10\">\n        </div>\n        <div class=\"control-group\">\n            <label id=\"lbl-ambient\">Ambient Light: 0.3</label>\n            <input type=\"range\" id=\"sld-ambient\" class=\"slider\" min=\"0\" max=\"1\" step=\"0.1\" value=\"0.3\">\n        </div>\n        <div class=\"control-group\">\n            <label id=\"lbl-size\">Avatar Size: 1.0x</label>\n            <input type=\"range\" id=\"sld-size\" class=\"slider\" min=\"0.1\" max=\"2\" step=\"0.1\" value=\"1\">\n        </div>\n    </div>\n\n    <div id=\"status-display\">\nNAVIGATION: FLY MODE\nSPEED: 4.5 u/s | ALT: 2.0 m\nSTANCE: STANDING | SIZE: 1.0x\n    </div>\n\n    <script>\n        const scene = new THREE.Scene();\n        scene.background = new THREE.Color(0x020202);\n\n        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.05, 1000);\n        camera.position.set(0, 2, 5); \n\n        const renderer = new THREE.WebGLRenderer({ antialias: true });\n        renderer.setSize(window.innerWidth, window.innerHeight);\n        document.body.appendChild(renderer.domElement);\n\n        const ambientLight = new THREE.AmbientLight(0xffffff, 0.3);\n        scene.add(ambientLight);\n\n        const directionalLight = new THREE.DirectionalLight(0xffffff, 0.4);\n        directionalLight.position.set(100, 100, 50);\n        directionalLight.castShadow = true;\n        scene.add(directionalLight);\n\n        const pointLight1 = new THREE.PointLight(0x6688ff, 0.3, 100);\n        pointLight1.position.set(-50, 20, -50);\n        scene.add(pointLight1);\n\n        const pointLight2 = new THREE.PointLight(0xff8866, 0.2, 80);\n        pointLight2.position.set(50, 15, 50);\n        scene.add(pointLight2);\n\n        const flashlight = new THREE.SpotLight(0xffffff, 10, 100, Math.PI / 5, 0.5, 1);\n        scene.add(flashlight);\n        scene.add(flashlight.target);\n\n        const controls = new THREE.PointerLockControls(camera, document.body);\n        scene.add(controls.getObject());\n\n        const blocker = document.getElementById('blocker');\n        blocker.addEventListener('click', () => controls.lock());\n        controls.addEventListener('lock', () => blocker.style.display = 'none');\n        controls.addEventListener('unlock', () => blocker.style.display = 'flex');\n\n        let isFlyMode = true;\n        let currentStance = 'stand';\n        let speedMultiplier = 1;\n        let avatarSizeMultiplier = 1.0;\n\n        const STANCES = {\n            stand: { height: 1.7, speed: 4.5, label: 'STANDING' },\n            crawl: { height: 0.8, speed: 2.5, label: 'KNEE CRAWL' },\n            belly: { height: 0.25, speed: 1.2, label: 'TINY CRAWL' }\n        };\n\n        let targetHeight = STANCES.stand.height;\n        let movementSpeed = STANCES.stand.speed;\n\n        const moveState = { \n            forward: false, \n            backward: false, \n            left: false, \n            right: false,\n            moveUp: false,\n            moveDown: false,\n            rollLeft: false,\n            rollRight: false\n        };\n        const moveVector = new THREE.Vector3();\n        const lookDirection = new THREE.Vector3();\n        const sideDirection = new THREE.Vector3();\n        \n        let verticalVelocity = 0;\n        const GRAVITY = 25.0;\n        let headBobTimer = 0;\n        const walkableMeshes = [];\n        const downRaycaster = new THREE.Raycaster();\n        const downVector = new THREE.Vector3(0, -1, 0);\n\n        const btnFly = document.getElementById('btn-fly');\n        const btnWalk = document.getElementById('btn-walk');\n        const sldBrightness = document.getElementById('sld-brightness');\n        const lblBrightness = document.getElementById('lbl-brightness');\n        const sldAmbient = document.getElementById('sld-ambient');\n        const lblAmbient = document.getElementById('lbl-ambient');\n        const sldSize = document.getElementById('sld-size');\n        const lblSize = document.getElementById('lbl-size');\n        const statusDisplay = document.getElementById('status-display');\n\n        document.getElementById('control-panel').addEventListener('click', (e) => e.stopPropagation());\n\n        sldBrightness.addEventListener('input', (e) => {\n            const val = parseFloat(e.target.value);\n            flashlight.intensity = val;\n            lblBrightness.innerText = `Flashlight Intensity: ${val.toFixed(1)}`;\n        });\n\n        sldAmbient.addEventListener('input', (e) => {\n            const val = parseFloat(e.target.value);\n            ambientLight.intensity = val;\n            lblAmbient.innerText = `Ambient Light: ${val.toFixed(1)}`;\n        });\n\n        sldSize.addEventListener('input', (e) => {\n            avatarSizeMultiplier = parseFloat(e.target.value);\n            lblSize.innerText = `Avatar Size: ${avatarSizeMultiplier.toFixed(1)}x`;\n            targetHeight = STANCES[currentStance].height * avatarSizeMultiplier;\n            updateStatusHUD();\n        });\n\n        function switchNavEngine(fly) {\n            isFlyMode = fly;\n            if (isFlyMode) {\n                btnFly.classList.add('active');\n                btnWalk.classList.remove('active');\n                verticalVelocity = 0;\n            } else {\n                btnWalk.classList.add('active');\n                btnFly.classList.remove('active');\n                verticalVelocity = 0;\n            }\n            updateStatusHUD();\n        }\n\n        btnFly.addEventListener('click', () => switchNavEngine(true));\n        btnWalk.addEventListener('click', () => switchNavEngine(false));\n\n        function updateStatusHUD() {\n            const pos = controls.getObject().position;\n            const altitude = pos.y.toFixed(2);\n            const currentSpeed = (movementSpeed * speedMultiplier).toFixed(1);\n            statusDisplay.innerText = \n                `NAVIGATION: ${isFlyMode ? 'FLY MODE' : 'WALK MODE'}\\n` +\n                `SPEED: ${currentSpeed} u/s | ALT: ${altitude} m\\n` +\n                `STANCE: ${STANCES[currentStance].label} | SIZE: ${avatarSizeMultiplier.toFixed(1)}x`;\n        }\n\n        document.addEventListener('keydown', (e) => {\n            if (e.code === 'KeyW') moveState.forward = true;\n            if (e.code === 'KeyS') moveState.backward = true;\n            if (e.code === 'KeyA') moveState.left = true;\n            if (e.code === 'KeyD') moveState.right = true;\n            if (e.code === 'Space') moveState.moveUp = true;\n            if (e.code === 'ControlLeft' || e.code === 'ControlRight') moveState.moveDown = true;\n            if (e.code === 'KeyQ') moveState.rollLeft = true;\n            if (e.code === 'KeyE') moveState.rollRight = true;\n            if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') speedMultiplier = 2;\n\n            if (e.code === 'Digit1') changeStance('stand');\n            if (e.code === 'Digit2') changeStance('crawl');\n            if (e.code === 'Digit3') changeStance('belly');\n        });\n\n        document.addEventListener('keyup', (e) => {\n            if (e.code === 'KeyW') moveState.forward = false;\n            if (e.code === 'KeyS') moveState.backward = false;\n            if (e.code === 'KeyA') moveState.left = false;\n            if (e.code === 'KeyD') moveState.right = false;\n            if (e.code === 'Space') moveState.moveUp = false;\n            if (e.code === 'ControlLeft' || e.code === 'ControlRight') moveState.moveDown = false;\n            if (e.code === 'KeyQ') moveState.rollLeft = false;\n            if (e.code === 'KeyE') moveState.rollRight = false;\n            if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') speedMultiplier = 1;\n        });\n\n        function changeStance(stanceKey) {\n            currentStance = stanceKey;\n            targetHeight = STANCES[stanceKey].height * avatarSizeMultiplier;\n            movementSpeed = STANCES[stanceKey].speed;\n            updateStatusHUD();\n        }\n\n        function findGroundElevation(posX, posY, posZ) {\n            if (walkableMeshes.length === 0) return 0;\n            const rayStart = new THREE.Vector3(posX, posY + 5.0, posZ);\n            downRaycaster.set(rayStart, downVector);\n            downRaycaster.far = 1000;\n            const hits = downRaycaster.intersectObjects(walkableMeshes, true);\n            if (hits.length > 0) {\n                return hits[0].point.y;\n            }\n            return 0;\n        }\n\n        const loader = new THREE.GLTFLoader();\n        const dracoLoader = new THREE.DRACOLoader();\n        dracoLoader.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.6/');\n        loader.setDRACOLoader(dracoLoader);\n\n        loader.load('BuzzardCaveA-v1.glb', function (gltf) {\n            scene.add(gltf.scene);\n            gltf.scene.traverse(child => {\n                if (child.isMesh) {\n                    walkableMeshes.push(child);\n                }\n            });\n            console.log('Cave mesh loaded successfully.');\n        });\n\n        const clock = new THREE.Clock();\n\n        function animate() {\n            requestAnimationFrame(animate);\n            const deltaTime = Math.min(clock.getDelta(), 0.1);\n            const playerObj = controls.getObject();\n\n            if (controls.isLocked) {\n                moveVector.set(0, 0, 0);\n                const currentPos = playerObj.position;\n\n                if (isFlyMode) {\n                    camera.getWorldDirection(lookDirection);\n                    sideDirection.copy(lookDirection).cross(camera.up).normalize();\n\n                    if (moveState.forward) moveVector.add(lookDirection);\n                    if (moveState.backward) moveVector.sub(lookDirection);\n                    if (moveState.left) moveVector.sub(sideDirection);\n                    if (moveState.right) moveVector.add(sideDirection);\n                    if (moveState.moveUp) moveVector.add(camera.up);\n                    if (moveState.moveDown) moveVector.sub(camera.up);\n\n                    if (moveVector.lengthSq() > 0) {\n                        moveVector.normalize();\n                        currentPos.addScaledVector(moveVector, movementSpeed * speedMultiplier * deltaTime);\n                    }\n\n                    if (moveState.rollLeft || moveState.rollRight) {\n                        const rollAxis = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);\n                        const rollAmount = (moveState.rollLeft ? 1 : -1) * 3 * deltaTime;\n                        camera.rotateOnWorldAxis(rollAxis, rollAmount);\n                    }\n                } else {\n                    const isMoving = moveState.forward || moveState.backward || moveState.left || moveState.right;\n                    if (moveState.forward) moveVector.z -= 1;\n                    if (moveState.backward) moveVector.z += 1;\n                    if (moveState.left) moveVector.x -= 1;\n                    if (moveState.right) moveVector.x += 1;\n\n                    if (moveVector.lengthSq() > 0) {\n                        moveVector.normalize();\n                        controls.moveForward(-moveVector.z * movementSpeed * speedMultiplier * deltaTime);\n                        controls.moveRight(moveVector.x * movementSpeed * speedMultiplier * deltaTime);\n                    }\n\n                    const groundY = findGroundElevation(currentPos.x, currentPos.y, currentPos.z);\n                    const targetEyeY = groundY + targetHeight;\n\n                    if (currentPos.y > targetEyeY) {\n                        verticalVelocity += GRAVITY * deltaTime;\n                        currentPos.y -= verticalVelocity * deltaTime;\n                        if (currentPos.y < targetEyeY) {\n                            currentPos.y = targetEyeY;\n                            verticalVelocity = 0;\n                        }\n                    } else {\n                        verticalVelocity = 0;\n                        currentPos.y = THREE.MathUtils.lerp(currentPos.y, targetEyeY, 0.25);\n                    }\n\n                    if (isMoving && Math.abs(currentPos.y - targetEyeY) < 0.1) {\n                        headBobTimer += deltaTime * movementSpeed * speedMultiplier * 1.5;\n                        const bobOffset = Math.sin(headBobTimer * 5) * 0.03 * avatarSizeMultiplier;\n                        camera.position.y = bobOffset;\n                    } else {\n                        camera.position.y = THREE.MathUtils.lerp(camera.position.y, 0, 0.1);\n                    }\n                }\n            }\n\n            flashlight.position.copy(camera.position).add(playerObj.position);\n            const gazeDir = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);\n            flashlight.target.position.copy(flashlight.position).add(gazeDir);\n\n            updateStatusHUD();\n            renderer.render(scene, camera);\n        }\n        animate();\n\n        window.addEventListener('resize', () => {\n            camera.aspect = window.innerWidth / window.innerHeight;\n            camera.updateProjectionMatrix();\n            renderer.setSize(window.innerWidth, window.innerHeight);\n        });\n    </script>\n</body>\n</html>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>3D Cave Advanced Explorer</title>
+<style>
+body, html {
+margin: 0;
+padding: 0;
+width: 100%;
+height: 100%;
+overflow: hidden;
+background: #050505;
+font-family: sans-serif;
+user-select: none;
+}
+#blocker {
+position: absolute;
+width: 100%;
+height: 100%;
+background-color: rgba(0,0,0,0.85);
+display: flex;
+justify-content: center;
+align-items: center;
+color: white;
+text-align: center;
+cursor: pointer;
+z-index: 10;
+}
+#instructions {
+font-size: 18px;
+line-height: 1.6;
+background: rgba(20,20,20,0.9);
+padding: 30px;
+border-radius: 10px;
+border: 1px solid #444;
+}
+#control-panel {
+position: absolute;
+top: 20px;
+right: 20px;
+background: rgba(15, 15, 15, 0.9);
+color: white;
+padding: 20px;
+border-radius: 8px;
+border: 1px solid #555;
+z-index: 20;
+width: 280px;
+display: flex;
+flex-direction: column;
+gap: 15px;
+pointer-events: auto;
+cursor: default;
+}
+.control-group {
+display: flex;
+flex-direction: column;
+gap: 5px;
+}
+.control-group label {
+font-size: 11px;
+text-transform: uppercase;
+letter-spacing: 1px;
+color: #bbb;
+}
+.slider {
+width: 100%;
+cursor: pointer;
+}
+.btn-group {
+display: flex;
+gap: 5px;
+}
+.toggle-btn {
+flex: 1;
+background: #222;
+border: 1px solid #555;
+color: #ccc;
+padding: 8px;
+cursor: pointer;
+border-radius: 4px;
+font-size: 12px;
+transition: all 0.2s;
+}
+.toggle-btn.active {
+background: #007acc;
+border-color: #0098ff;
+color: white;
+font-weight: bold;
+}
+#status-display {
+position: absolute;
+bottom: 20px;
+left: 20px;
+color: #00ff00;
+font-family: monospace;
+font-size: 12px;
+background: rgba(0,0,0,0.7);
+padding: 10px;
+border-radius: 4px;
+z-index: 5;
+pointer-events: none;
+line-height: 1.4;
+}
+</style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/PointerLockControls.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/DRACOLoader.js"></script>
+</head>
+<body>
+
+<div id="blocker">
+<div id="instructions">
+<span style="font-size:32px; font-weight:bold; color: #00baee;">Click to Enter Cave</span><br/><br/>
+<strong>Look Around:</strong> Move your Mouse<br/>
+<strong>Move (3D Fly/Walk):</strong> WASD Keys<br/>
+<strong>Vertical Movement:</strong> SPACE (Up) / CTRL (Down)<br/>
+<strong>Roll (Barrel Roll):</strong> Q / E Keys<br/>
+<strong>Speed Boost:</strong> Hold SHIFT (2x)<br/><br/>
+<span style="color:#ffcc00; font-weight:bold;">Stance Adjustment Keys:</span><br/>
+<strong>1 Key:</strong> Stand/Walk Mode<br/>
+<strong>2 Key:</strong> Knee Crawl Mode (Smaller)<br/>
+<strong>3 Key:</strong> Tiny Crawl Mode (Microscopic - fits through cracks!)<br/><br/>
+Press <strong>ESC</strong> to release mouse and adjust menu controls.
+</div>
+</div>
+
+<div id="control-panel">
+<div class="control-group">
+<label>Navigation Engine Mode</label>
+<div class="btn-group">
+<button id="btn-fly" class="toggle-btn active">Fly Mode</button>
+<button id="btn-walk" class="toggle-btn">Walk Mode</button>
+</div>
+</div>
+<div class="control-group">
+<label id="lbl-brightness">Flashlight Intensity: 10.0</label>
+<input type="range" id="sld-brightness" class="slider" min="0" max="30" step="0.5" value="10">
+</div>
+<div class="control-group">
+<label id="lbl-ambient">Ambient Light: 0.3</label>
+<input type="range" id="sld-ambient" class="slider" min="0" max="1" step="0.1" value="0.3">
+</div>
+<div class="control-group">
+<label id="lbl-size">Avatar Size: 1.0x</label>
+<input type="range" id="sld-size" class="slider" min="0.1" max="2" step="0.1" value="1">
+</div>
+</div>
+
+<div id="status-display">
+NAVIGATION: FLY MODE
+SPEED: 4.5 u/s | ALT: 2.0 m
+STANCE: STANDING | SIZE: 1.0x
+</div>
+
+<script>
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x020202);
+
+const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+camera.position.set(0, 2, 5); 
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+document.body.appendChild(renderer.domElement);
+
+// Enhanced lighting setup
+const ambientLight = new THREE.AmbientLight(0xffffff, 0.3);
+scene.add(ambientLight);
+
+// Add directional light for better surface definition
+const directionalLight = new THREE.DirectionalLight(0xffffff, 0.4);
+directionalLight.position.set(100, 100, 50);
+directionalLight.castShadow = true;
+scene.add(directionalLight);
+
+// Add point lights for atmospheric effect
+const pointLight1 = new THREE.PointLight(0x6688ff, 0.3, 100);
+pointLight1.position.set(-50, 20, -50);
+scene.add(pointLight1);
+
+const pointLight2 = new THREE.PointLight(0xff8866, 0.2, 80);
+pointLight2.position.set(50, 15, 50);
+scene.add(pointLight2);
+
+const flashlight = new THREE.SpotLight(0xffffff, 10, 100, Math.PI / 5, 0.5, 1);
+scene.add(flashlight);
+scene.add(flashlight.target);
+
+const controls = new THREE.PointerLockControls(camera, document.body);
+scene.add(controls.getObject());
+
+const blocker = document.getElementById('blocker');
+blocker.addEventListener('click', () => controls.lock());
+controls.addEventListener('lock', () => blocker.style.display = 'none');
+controls.addEventListener('unlock', () => blocker.style.display = 'flex');
+
+let isFlyMode = true;
+let currentStance = 'stand';
+let speedMultiplier = 1;
+let avatarSizeMultiplier = 1.0;
+
+const STANCES = {
+stand: { height: 2.0, speed: 4.5, label: 'STANDING' },
+crawl: { height: 0.9, speed: 2.5, label: 'KNEE CRAWL' },
+belly: { height: 0.3, speed: 1.2, label: 'TINY CRAWL' }
+};
+
+let targetHeight = STANCES.stand.height;
+let movementSpeed = STANCES.stand.speed;
+
+const moveState = { 
+forward: false, 
+backward: false, 
+left: false, 
+right: false,
+moveUp: false,
+moveDown: false,
+rollLeft: false,
+rollRight: false
+};
+const moveVector = new THREE.Vector3();
+const lookDirection = new THREE.Vector3();
+const sideDirection = new THREE.Vector3();
+
+let verticalVelocity = 0;
+const GRAVITY = 32.0;
+const FLOOR_LEVEL = 0;
+
+const btnFly = document.getElementById('btn-fly');
+const btnWalk = document.getElementById('btn-walk');
+const sldBrightness = document.getElementById('sld-brightness');
+const lblBrightness = document.getElementById('lbl-brightness');
+const sldAmbient = document.getElementById('sld-ambient');
+const lblAmbient = document.getElementById('lbl-ambient');
+const sldSize = document.getElementById('sld-size');
+const lblSize = document.getElementById('lbl-size');
+const statusDisplay = document.getElementById('status-display');
+
+document.getElementById('control-panel').addEventListener('click', (e) => e.stopPropagation());
+
+sldBrightness.addEventListener('input', (e) => {
+const val = parseFloat(e.target.value);
+flashlight.intensity = val;
+lblBrightness.innerText = `Flashlight Intensity: ${val.toFixed(1)}`;
+});
+
+sldAmbient.addEventListener('input', (e) => {
+const val = parseFloat(e.target.value);
+ambientLight.intensity = val;
+lblAmbient.innerText = `Ambient Light: ${val.toFixed(1)}`;
+});
+
+sldSize.addEventListener('input', (e) => {
+avatarSizeMultiplier = parseFloat(e.target.value);
+lblSize.innerText = `Avatar Size: ${avatarSizeMultiplier.toFixed(1)}x`;
+
+// Update stance heights based on size multiplier
+targetHeight = STANCES[currentStance].height * avatarSizeMultiplier;
+controls.getObject().position.y = targetHeight;
+updateStatusHUD();
+});
+
+function switchNavEngine(fly) {
+isFlyMode = fly;
+if (isFlyMode) {
+btnFly.classList.add('active');
+btnWalk.classList.remove('active');
+verticalVelocity = 0;
+} else {
+btnWalk.classList.add('active');
+btnFly.classList.remove('active');
+controls.getObject().position.y = STANCES[currentStance].height * avatarSizeMultiplier;
+verticalVelocity = 0;
+}
+updateStatusHUD();
+}
+
+btnFly.addEventListener('click', () => switchNavEngine(true));
+btnWalk.addEventListener('click', () => switchNavEngine(false));
+
+function updateStatusHUD() {
+const pos = controls.getObject().position;
+const altitude = pos.y.toFixed(1);
+const currentSpeed = (movementSpeed * speedMultiplier).toFixed(1);
+statusDisplay.innerText = 
+`NAVIGATION: ${isFlyMode ? 'FLY MODE' : 'WALK MODE'}\n` +
+`SPEED: ${currentSpeed} u/s | ALT: ${altitude} m\n` +
+`STANCE: ${STANCES[currentStance].label} | SIZE: ${avatarSizeMultiplier.toFixed(1)}x`;
+}
+
+document.addEventListener('keydown', (e) => {
+if (e.code === 'KeyW') moveState.forward = true;
+if (e.code === 'KeyS') moveState.backward = true;
+if (e.code === 'KeyA') moveState.left = true;
+if (e.code === 'KeyD') moveState.right = true;
+if (e.code === 'Space') moveState.moveUp = true;
+if (e.code === 'ControlLeft' || e.code === 'ControlRight') moveState.moveDown = true;
+if (e.code === 'KeyQ') moveState.rollLeft = true;
+if (e.code === 'KeyE') moveState.rollRight = true;
+if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') speedMultiplier = 2;
+
+if (e.code === 'Digit1') changeStance('stand');
+if (e.code === 'Digit2') changeStance('crawl');
+if (e.code === 'Digit3') changeStance('belly');
+});
+
+document.addEventListener('keyup', (e) => {
+if (e.code === 'KeyW') moveState.forward = false;
+if (e.code === 'KeyS') moveState.backward = false;
+if (e.code === 'KeyA') moveState.left = false;
+if (e.code === 'KeyD') moveState.right = false;
+if (e.code === 'Space') moveState.moveUp = false;
+if (e.code === 'ControlLeft' || e.code === 'ControlRight') moveState.moveDown = false;
+if (e.code === 'KeyQ') moveState.rollLeft = false;
+if (e.code === 'KeyE') moveState.rollRight = false;
+if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') speedMultiplier = 1;
+});
+
+function changeStance(stanceKey) {
+currentStance = stanceKey;
+targetHeight = STANCES[stanceKey].height * avatarSizeMultiplier;
+movementSpeed = STANCES[stanceKey].speed;
+if (!isFlyMode) {
+controls.getObject().position.y = targetHeight;
+}
+updateStatusHUD();
+}
+
+const loader = new THREE.GLTFLoader();
+const dracoLoader = new THREE.DRACOLoader();
+dracoLoader.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.6/');
+loader.setDRACOLoader(dracoLoader);
+
+loader.load('BuzzardCaveA-v1.glb', function (gltf) {
+scene.add(gltf.scene);
+console.log('Cave mesh loaded successfully.');
+});
+
+const clock = new THREE.Clock();
+
+function animate() {
+requestAnimationFrame(animate);
+const deltaTime = Math.min(clock.getDelta(), 0.1);
+
+if (controls.isLocked) {
+                moveVector.set(0, 0, 0);
+                const currentPos = controls.getObject().position;
+
+                const controlObject = controls.getObject();
+                
+if (isFlyMode) {
+// FLY MODE - PURE FREE FLIGHT
+                    moveVector.set(0, 0, 0);
+camera.getWorldDirection(lookDirection);
+sideDirection.copy(lookDirection).cross(camera.up).normalize();
+
+@@ -363,7 +363,7 @@
+
+if (moveVector.lengthSq() > 0) {
+moveVector.normalize();
+                        currentPos.addScaledVector(moveVector, movementSpeed * speedMultiplier * deltaTime);
+                        controlObject.position.addScaledVector(moveVector, movementSpeed * speedMultiplier * deltaTime);
+}
+
+// Handle roll rotation
+@@ -373,29 +373,56 @@
+camera.rotateOnWorldAxis(rollAxis, rollAmount);
+}
+} else {
+                    // WALK MODE - GRAVITY AND GROUND CONSTRAINT
+                    // WALK MODE - HORIZONTAL MOVEMENT + GRAVITY
+                    moveVector.set(0, 0, 0);
+                    
+if (moveState.forward) moveVector.z -= 1;
+if (moveState.backward) moveVector.z += 1;
+if (moveState.left) moveVector.x -= 1;
+if (moveState.right) moveVector.x += 1;
+
+                    moveVector.normalize();
+                    controls.moveForward(-moveVector.z * movementSpeed * speedMultiplier * deltaTime);
+                    controls.moveRight(moveVector.x * movementSpeed * speedMultiplier * deltaTime);
+                    if (moveVector.lengthSq() > 0) {
+                        moveVector.normalize();
+                    }
+
+                    // Get camera direction for forward/backward
+                    camera.getWorldDirection(lookDirection);
+                    lookDirection.y = 0; // Only horizontal direction
+                    lookDirection.normalize();
+                    
+                    sideDirection.copy(lookDirection).cross(new THREE.Vector3(0, 1, 0)).normalize();
+
+                    // Apply horizontal movement
+                    const horizontalMove = lookDirection
+                        .clone()
+                        .multiplyScalar(-moveVector.z * movementSpeed * speedMultiplier * deltaTime)
+                        .add(sideDirection.clone().multiplyScalar(moveVector.x * movementSpeed * speedMultiplier * deltaTime));
+
+                    // Apply gravity ALWAYS in walk mode
+                    controlObject.position.add(horizontalMove);
+
+                    // Apply gravity
+const groundLevel = FLOOR_LEVEL + targetHeight;
+
+                    if (currentPos.y > groundLevel) {
+                        // Falling - accelerate downward
+                    if (controlObject.position.y > groundLevel) {
+                        // Falling
+verticalVelocity += GRAVITY * deltaTime;
+                    } else if (controlObject.position.y < groundLevel) {
+                        // Below ground - reset
+                        verticalVelocity = 0;
+                        controlObject.position.y = groundLevel;
+} else {
+                        // At or below ground level - snap to ground
+                        // At ground level
+verticalVelocity = 0;
+                        currentPos.y = groundLevel;
+}
+
+                    currentPos.y -= verticalVelocity * deltaTime;
+                    // Apply vertical velocity
+                    controlObject.position.y -= verticalVelocity * deltaTime;
+                    
+                    // Final ground clamp
+                    if (controlObject.position.y < groundLevel) {
+                        controlObject.position.y = groundLevel;
+                        verticalVelocity = 0;
+                    }
+}
+}
