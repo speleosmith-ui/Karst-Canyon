@@ -11,7 +11,7 @@ body, html {
   width: 100%;
   height: 100%;
   overflow: hidden;
-  background: #20242b;
+  background: #111418;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   user-select: none;
   -webkit-user-select: none;
@@ -45,7 +45,7 @@ body, html {
   border: 1px solid #444;
   z-index: 30;
   width: 260px;
-  max-height: 78vh;
+  max-height: 80vh;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
@@ -250,15 +250,24 @@ body, html {
 <div id="help-toast">🖱️ <b>Orbit Mode:</b> 1-finger rotate | 2-finger zoom | Double-tap cave to enter</div>
 
 <div id="control-panel">
-  <button id="btn-enter-fps" class="primary-btn">🎮 Enter Cave (1st Person)</button>
+  <button id="btn-enter-fps" class="primary-btn">🎮 Enter Cave (Walk Mode)</button>
   <button id="btn-load-file" class="action-btn">📂 Open Another GLB</button>
 
   <div class="control-group">
-    <label>Camera Mode</label>
+    <label>Navigation Mode</label>
     <div class="btn-group">
       <button id="btn-mode-orbit" class="toggle-btn active">Orbit</button>
-      <button id="btn-mode-fps" class="toggle-btn">Walk</button>
-      <button id="btn-mode-fly" class="toggle-btn">Fly</button>
+      <button id="btn-mode-walk" class="toggle-btn">Walk (Floor)</button>
+      <button id="btn-mode-fly" class="toggle-btn">Fly 3D</button>
+    </div>
+  </div>
+
+  <div class="control-group">
+    <label>Explorer Stance (Walk Mode)</label>
+    <div class="btn-group">
+      <button id="btn-stance-stand" class="toggle-btn active">Stand (1.6m)</button>
+      <button id="btn-stance-crouch" class="toggle-btn">Crouch (1.0m)</button>
+      <button id="btn-stance-crawl" class="toggle-btn">Crawl (0.5m)</button>
     </div>
   </div>
 
@@ -272,13 +281,18 @@ body, html {
   </div>
 
   <div class="control-group">
-    <label id="lbl-brightness">Headlamp: 50.0</label>
-    <input type="range" id="sld-brightness" class="slider" min="0" max="150" step="1" value="50">
+    <label id="lbl-brightness">Headlamp: 15.0</label>
+    <input type="range" id="sld-brightness" class="slider" min="0" max="60" step="0.5" value="15">
   </div>
 
   <div class="control-group">
-    <label id="lbl-ambient">Ambient Light: 2.0</label>
-    <input type="range" id="sld-ambient" class="slider" min="0" max="5" step="0.1" value="2.0">
+    <label id="lbl-ambient">Ambient Light: 0.4</label>
+    <input type="range" id="sld-ambient" class="slider" min="0" max="2" step="0.05" value="0.4">
+  </div>
+
+  <div class="control-group">
+    <label id="lbl-exposure">Camera Exposure: 0.85</label>
+    <input type="range" id="sld-exposure" class="slider" min="0.1" max="2.0" step="0.05" value="0.85">
   </div>
 
   <button id="btn-reset-view" class="toggle-btn" style="margin-top: 4px;">🎯 Center & Frame Model</button>
@@ -305,7 +319,7 @@ const isTouchDevice = ('ontouchstart' in window || navigator.maxTouchPoints > 0)
 
 // --- Scene Setup ---
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x20242b);
+scene.background = new THREE.Color(0x111418);
 
 const camera = new THREE.PerspectiveCamera(65, window.innerWidth / window.innerHeight, 0.01, 10000);
 camera.position.set(0, 30, 50);
@@ -315,7 +329,7 @@ renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.outputEncoding = THREE.sRGBEncoding;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.2;
+renderer.toneMappingExposure = 0.85;
 document.body.appendChild(renderer.domElement);
 
 // Orbit Controls
@@ -326,22 +340,23 @@ controls.maxDistance = 1000;
 controls.minDistance = 0.1;
 
 // Grid helper
-const gridHelper = new THREE.GridHelper(100, 50, 0x00baee, 0x4f5866);
+const gridHelper = new THREE.GridHelper(100, 50, 0x00baee, 0x2e3540);
 scene.add(gridHelper);
 
 // Lighting
-const ambientLight = new THREE.AmbientLight(0xffffff, 2.0);
+const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
 scene.add(ambientLight);
 
-const hemiLight = new THREE.HemisphereLight(0xffffff, 0x555555, 1.2);
+const hemiLight = new THREE.HemisphereLight(0xffffff, 0x222222, 0.3);
 hemiLight.position.set(0, 100, 0);
 scene.add(hemiLight);
 
-const sunLight = new THREE.DirectionalLight(0xffffff, 1.0);
+const sunLight = new THREE.DirectionalLight(0xffffff, 0.3);
 sunLight.position.set(50, 100, 50);
 scene.add(sunLight);
 
-const camLight = new THREE.PointLight(0xffffff, 50, 300, 0.5);
+// Headlamp light
+const camLight = new THREE.PointLight(0xffffff, 15, 200, 1);
 scene.add(camLight);
 
 // State Variables
@@ -349,14 +364,19 @@ let currentCaveMesh = null;
 let caveBounds = null;
 let modelName = 'Loading...';
 let renderStyle = 'lit';
-let activeCameraMode = 'orbit';
+let activeCameraMode = 'orbit'; // 'orbit', 'walk', 'fly'
 let isPointerLocked = false;
+
+// Stance and Ground Clamping
+let eyeHeight = 1.6; // 1.6m standing, 1.0m crouching, 0.5m crawling
+const groundRaycaster = new THREE.Raycaster();
+const downVector = new THREE.Vector3(0, -1, 0);
 
 const playerPos = new THREE.Vector3(0, 3, 0);
 let yaw = 0;
 let pitch = 0;
 let speedMultiplier = 1;
-const moveSpeed = 7.0;
+const moveSpeed = 6.0;
 const moveState = { forward: false, backward: false, left: false, right: false, moveUp: false, moveDown: false };
 const joystickVector = new THREE.Vector2(0, 0);
 
@@ -370,8 +390,11 @@ const btnLoadFile = document.getElementById('btn-load-file');
 const btnEnterFPS = document.getElementById('btn-enter-fps');
 const btnResetView = document.getElementById('btn-reset-view');
 const btnModeOrbit = document.getElementById('btn-mode-orbit');
-const btnModeFPS = document.getElementById('btn-mode-fps');
+const btnModeWalk = document.getElementById('btn-mode-walk');
 const btnModeFly = document.getElementById('btn-mode-fly');
+const btnStanceStand = document.getElementById('btn-stance-stand');
+const btnStanceCrouch = document.getElementById('btn-stance-crouch');
+const btnStanceCrawl = document.getElementById('btn-stance-crawl');
 const btnRenderLit = document.getElementById('btn-render-lit');
 const btnRenderUnlit = document.getElementById('btn-render-unlit');
 const btnRenderWire = document.getElementById('btn-render-wire');
@@ -379,6 +402,8 @@ const sldBrightness = document.getElementById('sld-brightness');
 const lblBrightness = document.getElementById('lbl-brightness');
 const sldAmbient = document.getElementById('sld-ambient');
 const lblAmbient = document.getElementById('lbl-ambient');
+const sldExposure = document.getElementById('sld-exposure');
+const lblExposure = document.getElementById('lbl-exposure');
 const statusDisplay = document.getElementById('status-display');
 const helpToast = document.getElementById('help-toast');
 
@@ -393,7 +418,7 @@ controlPanel.addEventListener('click', (e) => e.stopPropagation());
 function setCameraMode(mode) {
   activeCameraMode = mode;
   btnModeOrbit.classList.toggle('active', mode === 'orbit');
-  btnModeFPS.classList.toggle('active', mode === 'fps');
+  btnModeWalk.classList.toggle('active', mode === 'walk');
   btnModeFly.classList.toggle('active', mode === 'fly');
 
   if (mode === 'orbit') {
@@ -410,9 +435,13 @@ function setCameraMode(mode) {
       mobileControls.style.display = 'block';
       btnExitFPS.style.display = 'block';
       controlPanel.classList.add('hidden');
-      helpToast.innerHTML = '🎮 <b>Left Stick:</b> Walk | <b>Right Drag:</b> Look around';
+      helpToast.innerHTML = mode === 'walk' 
+        ? '🚶 <b>Walk Mode:</b> Follows cave floor automatically'
+        : '✈️ <b>Fly Mode:</b> Move in line of sight (Noclip)';
     } else {
-      helpToast.innerHTML = '🎮 <b>WASD:</b> Move | <b>Mouse:</b> Look | <b>Space/Ctrl:</b> Up/Down | <b>ESC:</b> Unlock';
+      helpToast.innerHTML = mode === 'walk'
+        ? '🚶 <b>Walk Mode:</b> W/A/S/D hugs cave floor | 1, 2, 3: Stance | ESC: Unlock'
+        : '✈️ <b>Fly Mode:</b> W moves in line of sight | Space/Ctrl: Up/Down | ESC: Unlock';
       try { renderer.domElement.requestPointerLock(); } catch(e) {}
     }
   }
@@ -420,10 +449,22 @@ function setCameraMode(mode) {
 }
 
 btnModeOrbit.addEventListener('click', () => setCameraMode('orbit'));
-btnModeFPS.addEventListener('click', () => setCameraMode('fps'));
+btnModeWalk.addEventListener('click', () => setCameraMode('walk'));
 btnModeFly.addEventListener('click', () => setCameraMode('fly'));
-btnEnterFPS.addEventListener('click', () => setCameraMode('fps'));
+btnEnterFPS.addEventListener('click', () => setCameraMode('walk'));
 btnExitFPS.addEventListener('click', () => setCameraMode('orbit'));
+
+// Stance Controls
+function setStance(h) {
+  eyeHeight = h;
+  btnStanceStand.classList.toggle('active', h === 1.6);
+  btnStanceCrouch.classList.toggle('active', h === 1.0);
+  btnStanceCrawl.classList.toggle('active', h === 0.5);
+  updateStatusHUD();
+}
+btnStanceStand.addEventListener('click', () => setStance(1.6));
+btnStanceCrouch.addEventListener('click', () => setStance(1.0));
+btnStanceCrawl.addEventListener('click', () => setStance(0.5));
 
 document.addEventListener('pointerlockchange', () => {
   isPointerLocked = (document.pointerLockElement === renderer.domElement);
@@ -443,14 +484,14 @@ function handleDoubleTap(clientX, clientY) {
   const intersects = raycaster.intersectObject(currentCaveMesh, true);
   if (intersects.length > 0) {
     playerPos.copy(intersects[0].point);
-    playerPos.y += 1.0;
-    setCameraMode('fps');
+    playerPos.y += eyeHeight;
+    setCameraMode('walk');
   }
 }
 
 renderer.domElement.addEventListener('dblclick', (e) => handleDoubleTap(e.clientX, e.clientY));
 
-// Touch swipe look handling (Right half of screen)
+// Touch swipe look handling
 let touchLookId = null;
 let lastTouchX = 0;
 let lastTouchY = 0;
@@ -474,10 +515,9 @@ window.addEventListener('touchmove', (e) => {
     if (t.identifier === touchLookId) {
       const dx = t.clientX - lastTouchX;
       const dy = t.clientY - lastTouchY;
-      // Fixed: Swiping right turns camera right
-      yaw += dx * 0.005;
+      yaw -= dx * 0.005;
       pitch -= dy * 0.005;
-      pitch = Math.max(-Math.PI / 2.1, Math.min(Math.PI / 2.1, pitch));
+      pitch = Math.max(-Math.PI / 2.05, Math.min(Math.PI / 2.05, pitch));
       lastTouchX = t.clientX;
       lastTouchY = t.clientY;
     }
@@ -490,7 +530,7 @@ window.addEventListener('touchend', (e) => {
   }
 });
 
-// Virtual Joystick (Left Thumb)
+// Virtual Joystick
 const joystickZone = document.getElementById('joystick-zone');
 const joystickKnob = document.getElementById('joystick-knob');
 let joystickTouchId = null;
@@ -543,7 +583,7 @@ btnTouchUp.addEventListener('touchend', () => { moveState.moveUp = false; });
 btnTouchDown.addEventListener('touchstart', (e) => { e.preventDefault(); moveState.moveDown = true; });
 btnTouchDown.addEventListener('touchend', () => { moveState.moveDown = false; });
 
-// Render Styles & High-Fidelity Textures
+// Render Styles
 function setRenderStyle(style) {
   renderStyle = style;
   btnRenderLit.classList.toggle('active', style === 'lit');
@@ -571,29 +611,28 @@ function applyMaterialStyle() {
         m.vertexColors = false;
         m.depthWrite = true;
 
-        // Ensure texture is crisp and color-accurate
         if (m.map) {
           m.map.encoding = THREE.sRGBEncoding;
           m.map.anisotropy = maxAniso;
           m.map.needsUpdate = true;
-          m.color.setHex(0xffffff); // Pure white so texture colors show at 100% brightness
+          m.color.setHex(0xffffff);
         }
 
         if (renderStyle === 'wire') {
           m.wireframe = true;
-          m.emissive = new THREE.Color(0x00ff88);
+          m.emissive.setHex(0x00ff88);
           m.emissiveMap = null;
         } else if (renderStyle === 'unlit') {
           m.wireframe = false;
-          m.emissive = new THREE.Color(0xffffff);
+          m.emissive.setHex(0xffffff);
           m.emissiveMap = m.map || null;
         } else {
           m.wireframe = false;
-          m.emissive = new THREE.Color(0x111111);
+          m.emissive.setHex(0x000000);
           m.emissiveMap = null;
-          m.roughness = 0.8;
-          m.metalness = 0.05;
-          if (!m.map) m.color.setHex(0x8a929e);
+          m.roughness = 0.9;
+          m.metalness = 0.0;
+          if (!m.map) m.color.setHex(0x777e8a);
         }
         m.needsUpdate = true;
       });
@@ -610,8 +649,13 @@ sldBrightness.addEventListener('input', (e) => {
 sldAmbient.addEventListener('input', (e) => {
   const val = parseFloat(e.target.value);
   ambientLight.intensity = val;
-  hemiLight.intensity = val * 0.6;
-  lblAmbient.innerText = `Ambient Light: ${val.toFixed(1)}`;
+  hemiLight.intensity = val * 0.5;
+  lblAmbient.innerText = `Ambient Light: ${val.toFixed(2)}`;
+});
+sldExposure.addEventListener('input', (e) => {
+  const val = parseFloat(e.target.value);
+  renderer.toneMappingExposure = val;
+  lblExposure.innerText = `Camera Exposure: ${val.toFixed(2)}`;
 });
 
 function frameModel() {
@@ -627,14 +671,15 @@ btnResetView.addEventListener('click', () => {
 });
 
 function updateStatusHUD() {
-  const modeLabel = activeCameraMode === 'orbit' ? 'ORBIT' : (activeCameraMode === 'fps' ? '1ST PERSON WALK' : 'FLY');
+  const stanceLabel = eyeHeight === 1.6 ? 'STANDING' : (eyeHeight === 1.0 ? 'CROUCHING' : 'CRAWLING');
+  const modeLabel = activeCameraMode === 'orbit' ? 'ORBIT' : (activeCameraMode === 'walk' ? `WALK (${stanceLabel})` : 'FLY 3D');
   statusDisplay.innerHTML = 
     `MODEL: ${modelName}<br/>` +
     `CAMERA: ${modeLabel} | STYLE: ${renderStyle.toUpperCase()}<br/>` +
     `POS: [X:${playerPos.x.toFixed(1)} Y:${playerPos.y.toFixed(1)} Z:${playerPos.z.toFixed(1)}]`;
 }
 
-// Desktop Keyboard
+// Keyboard controls
 document.addEventListener('keydown', (e) => {
   if (e.code === 'Escape') { if (activeCameraMode !== 'orbit') setCameraMode('orbit'); return; }
   if (e.code === 'KeyW') moveState.forward = true;
@@ -644,7 +689,11 @@ document.addEventListener('keydown', (e) => {
   if (e.code === 'Space') moveState.moveUp = true;
   if (e.code === 'ControlLeft' || e.code === 'ControlRight') moveState.moveDown = true;
   if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') speedMultiplier = 2.0;
-  if (e.code === 'KeyF') setCameraMode(activeCameraMode === 'fly' ? 'fps' : 'fly');
+  if (e.code === 'KeyF') setCameraMode(activeCameraMode === 'walk' ? 'fly' : 'walk');
+  
+  if (e.code === 'Digit1') setStance(1.6);
+  if (e.code === 'Digit2') setStance(1.0);
+  if (e.code === 'Digit3') setStance(0.5);
 });
 document.addEventListener('keyup', (e) => {
   if (e.code === 'KeyW') moveState.forward = false;
@@ -656,12 +705,12 @@ document.addEventListener('keyup', (e) => {
   if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') speedMultiplier = 1;
 });
 
-// Desktop Mouse Look (Fixed: Moving mouse right turns camera right)
+// Mouse Look
 document.addEventListener('mousemove', (e) => {
   if (!isPointerLocked) return;
-  yaw += e.movementX * 0.0025;
+  yaw -= e.movementX * 0.0025;
   pitch -= e.movementY * 0.0025;
-  pitch = Math.max(-Math.PI / 2.1, Math.min(Math.PI / 2.1, pitch));
+  pitch = Math.max(-Math.PI / 2.05, Math.min(Math.PI / 2.05, pitch));
 });
 
 // File Loader handlers
@@ -726,9 +775,36 @@ function loadCaveModel(url, displayName) {
   );
 }
 
-// Exact file name from repo
 const DEFAULT_MODEL = 'BuzzardCaveA-v1.glb';
 loadCaveModel(DEFAULT_MODEL, DEFAULT_MODEL);
+
+// --- Surface Raycaster / Ground Snapping ---
+function snapToMeshFloor(deltaTime) {
+  if (!currentCaveMesh) return;
+
+  // Raycast from slightly above eye height downwards
+  const rayOrigin = playerPos.clone();
+  rayOrigin.y += 1.0; 
+  groundRaycaster.set(rayOrigin, downVector);
+  groundRaycaster.far = 6.0; // Check up to 6m below
+
+  const hits = groundRaycaster.intersectObject(currentCaveMesh, true);
+  if (hits.length > 0) {
+    // Find closest ground hit
+    let validHit = null;
+    for (let i = 0; i < hits.length; i++) {
+      if (hits[i].distance > 0.05) {
+        validHit = hits[i];
+        break;
+      }
+    }
+    if (validHit) {
+      const targetY = validHit.point.y + eyeHeight;
+      // Smoothly glide up and down slopes
+      playerPos.y = THREE.MathUtils.lerp(playerPos.y, targetY, Math.min(1.0, 14.0 * deltaTime));
+    }
+  }
+}
 
 // Animation Loop
 const clock = new THREE.Clock();
@@ -741,18 +817,35 @@ function animate() {
     controls.update();
     camLight.position.copy(camera.position);
   } else {
-    // Look direction vector
-    const forward = new THREE.Vector3(-Math.sin(yaw), 0, -Math.cos(yaw));
-    const right = new THREE.Vector3(Math.cos(yaw), 0, -Math.sin(yaw));
+    const lookDir = new THREE.Vector3(
+      Math.sin(yaw) * Math.cos(pitch),
+      Math.sin(pitch),
+      -Math.cos(yaw) * Math.cos(pitch)
+    ).normalize();
+
+    let forward, right;
+
+    if (activeCameraMode === 'fly') {
+      // Fly 3D: Moves directly into sight line
+      forward = lookDir.clone();
+      const worldUp = new THREE.Vector3(0, 1, 0);
+      right = new THREE.Vector3().crossVectors(forward, worldUp).normalize();
+      if (right.lengthSq() < 0.001) {
+        right = new THREE.Vector3(Math.cos(yaw), 0, Math.sin(yaw));
+      }
+    } else {
+      // Walk: Moves strictly on horizontal ground plane
+      forward = new THREE.Vector3(Math.sin(yaw), 0, -Math.cos(yaw)).normalize();
+      right = new THREE.Vector3(Math.cos(yaw), 0, Math.sin(yaw)).normalize();
+    }
+
     const moveVec = new THREE.Vector3();
 
-    // Keyboard movement
     if (moveState.forward) moveVec.add(forward);
     if (moveState.backward) moveVec.sub(forward);
     if (moveState.left) moveVec.sub(right);
     if (moveState.right) moveVec.add(right);
 
-    // Mobile Joystick movement
     if (joystickVector.lengthSq() > 0.01) {
       moveVec.addScaledVector(forward, joystickVector.y);
       moveVec.addScaledVector(right, joystickVector.x);
@@ -763,17 +856,16 @@ function animate() {
       playerPos.addScaledVector(moveVec, moveSpeed * speedMultiplier * deltaTime);
     }
 
-    if (activeCameraMode === 'fly' || activeCameraMode === 'fps') {
+    if (activeCameraMode === 'walk') {
+      // Stick to cave floor contours
+      snapToMeshFloor(deltaTime);
+    } else {
+      // Fly mode manual vertical adjustment
       if (moveState.moveUp) playerPos.y += moveSpeed * speedMultiplier * deltaTime;
       if (moveState.moveDown) playerPos.y -= moveSpeed * speedMultiplier * deltaTime;
     }
 
     camera.position.copy(playerPos);
-    const lookDir = new THREE.Vector3(
-      -Math.sin(yaw) * Math.cos(pitch),
-      Math.sin(pitch),
-      -Math.cos(yaw) * Math.cos(pitch)
-    ).normalize();
     camera.lookAt(camera.position.clone().add(lookDir));
     camLight.position.copy(camera.position);
     updateStatusHUD();
