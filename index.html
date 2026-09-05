@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>3D Cave Explorer</title>
 <style>
 body, html {
@@ -11,26 +11,54 @@ body, html {
   width: 100%;
   height: 100%;
   overflow: hidden;
-  background: #282c34;
+  background: #20242b;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   user-select: none;
+  -webkit-user-select: none;
+  touch-action: none;
 }
-#control-panel {
+
+/* --- Collapsible Control Panel --- */
+#btn-toggle-menu {
   position: absolute;
   top: 15px;
   right: 15px;
-  background: rgba(18, 20, 24, 0.94);
+  background: rgba(20, 24, 30, 0.92);
+  color: white;
+  border: 1px solid #555;
+  padding: 8px 14px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: bold;
+  cursor: pointer;
+  z-index: 35;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+}
+#control-panel {
+  position: absolute;
+  top: 55px;
+  right: 15px;
+  background: rgba(18, 20, 24, 0.96);
   color: white;
   padding: 16px;
   border-radius: 8px;
   border: 1px solid #444;
   z-index: 30;
-  width: 270px;
+  width: 260px;
+  max-height: 78vh;
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 10px;
-  box-shadow: 0 6px 24px rgba(0,0,0,0.5);
+  box-shadow: 0 6px 24px rgba(0,0,0,0.6);
+  transition: transform 0.25s ease, opacity 0.25s ease;
 }
+#control-panel.hidden {
+  transform: translateY(-10px);
+  opacity: 0;
+  pointer-events: none;
+}
+
 .control-group {
   display: flex;
   flex-direction: column;
@@ -55,12 +83,13 @@ body, html {
   background: #2b303c;
   border: 1px solid #4a5264;
   color: #ddd;
-  padding: 7px;
+  padding: 8px 4px;
   cursor: pointer;
   border-radius: 4px;
   font-size: 11px;
   transition: all 0.2s;
   font-weight: 500;
+  text-align: center;
 }
 .toggle-btn.active {
   background: #007acc;
@@ -79,9 +108,6 @@ body, html {
   text-align: center;
   font-size: 12px;
 }
-.action-btn:hover {
-  background: #218838;
-}
 .primary-btn {
   background: #007acc;
   border: 1px solid #0098ff;
@@ -93,36 +119,23 @@ body, html {
   text-align: center;
   font-size: 13px;
 }
-.primary-btn:hover {
-  background: #0062a3;
-}
+
+/* --- HUD & Banners --- */
 #status-display {
   position: absolute;
-  bottom: 15px;
-  left: 15px;
+  bottom: 12px;
+  left: 12px;
   color: #00ff88;
   font-family: monospace;
-  font-size: 12px;
+  font-size: 11px;
   background: rgba(10, 12, 16, 0.88);
-  padding: 10px 14px;
+  padding: 8px 12px;
   border-radius: 6px;
   z-index: 10;
   pointer-events: none;
-  line-height: 1.5;
+  line-height: 1.4;
   border: 1px solid #333;
-}
-#crosshair {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  width: 8px;
-  height: 8px;
-  border: 2px solid rgba(255,255,255,0.8);
-  border-radius: 50%;
-  pointer-events: none;
-  z-index: 15;
-  display: none;
+  max-width: 80%;
 }
 #help-toast {
   position: absolute;
@@ -130,11 +143,92 @@ body, html {
   left: 15px;
   background: rgba(15, 17, 21, 0.85);
   color: #eee;
-  padding: 8px 14px;
+  padding: 8px 12px;
   border-radius: 4px;
-  font-size: 12px;
+  font-size: 11px;
   z-index: 10;
   border: 1px solid #444;
+  pointer-events: none;
+  max-width: 60%;
+}
+
+/* --- Mobile Virtual Joystick & Touch Overlay --- */
+#mobile-controls {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 20;
+  display: none;
+}
+#joystick-zone {
+  position: absolute;
+  bottom: 30px;
+  left: 30px;
+  width: 110px;
+  height: 110px;
+  background: rgba(255, 255, 255, 0.12);
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-radius: 50%;
+  pointer-events: auto;
+  touch-action: none;
+}
+#joystick-knob {
+  position: absolute;
+  top: 35px;
+  left: 35px;
+  width: 40px;
+  height: 40px;
+  background: rgba(0, 150, 255, 0.8);
+  border-radius: 50%;
+  box-shadow: 0 0 10px rgba(0, 150, 255, 0.5);
+  pointer-events: none;
+}
+#mobile-actions {
+  position: absolute;
+  bottom: 35px;
+  right: 25px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  pointer-events: auto;
+}
+.mobile-btn {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: rgba(20, 24, 30, 0.85);
+  border: 2px solid rgba(255, 255, 255, 0.4);
+  color: white;
+  font-weight: bold;
+  font-size: 13px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  cursor: pointer;
+  touch-action: none;
+}
+.mobile-btn:active {
+  background: #007acc;
+}
+#btn-exit-fps {
+  position: absolute;
+  top: 15px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(220, 53, 69, 0.9);
+  color: white;
+  border: 1px solid #ff7b88;
+  padding: 8px 16px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: bold;
+  cursor: pointer;
+  z-index: 25;
+  display: none;
+  pointer-events: auto;
 }
 #file-input {
   display: none;
@@ -149,19 +243,22 @@ body, html {
 <body>
 
 <input type="file" id="file-input" accept=".glb,.gltf">
-<div id="crosshair"></div>
-<div id="help-toast">🖱️ <b>Orbit Mode:</b> Drag to rotate | Scroll to zoom | Double-click cave to enter</div>
+
+<button id="btn-toggle-menu">⚙️ Menu</button>
+<button id="btn-exit-fps">✕ Exit 1st Person</button>
+
+<div id="help-toast">🖱️ <b>Orbit Mode:</b> 1-finger rotate | 2-finger zoom | Double-tap cave to enter</div>
 
 <div id="control-panel">
   <button id="btn-enter-fps" class="primary-btn">🎮 Enter Cave (1st Person)</button>
-  <button id="btn-load-file" class="action-btn">📂 Open Another GLB File</button>
+  <button id="btn-load-file" class="action-btn">📂 Open Another GLB</button>
 
   <div class="control-group">
     <label>Camera Mode</label>
     <div class="btn-group">
-      <button id="btn-mode-orbit" class="toggle-btn active">Orbit View</button>
-      <button id="btn-mode-fps" class="toggle-btn">1st Person</button>
-      <button id="btn-mode-fly" class="toggle-btn">Fly Mode</button>
+      <button id="btn-mode-orbit" class="toggle-btn active">Orbit</button>
+      <button id="btn-mode-fps" class="toggle-btn">Walk</button>
+      <button id="btn-mode-fly" class="toggle-btn">Fly</button>
     </div>
   </div>
 
@@ -170,7 +267,7 @@ body, html {
     <div class="btn-group">
       <button id="btn-render-lit" class="toggle-btn active">Lit</button>
       <button id="btn-render-unlit" class="toggle-btn">Full Bright</button>
-      <button id="btn-render-wire" class="toggle-btn">Wireframe</button>
+      <button id="btn-render-wire" class="toggle-btn">Wire</button>
     </div>
   </div>
 
@@ -184,24 +281,36 @@ body, html {
     <input type="range" id="sld-ambient" class="slider" min="0" max="5" step="0.1" value="2.0">
   </div>
 
-  <button id="btn-reset-view" class="toggle-btn" style="margin-top: 4px;">🎯 Reset & Frame Model</button>
+  <button id="btn-reset-view" class="toggle-btn" style="margin-top: 4px;">🎯 Center & Frame Model</button>
+</div>
+
+<!-- Mobile Touch Controls -->
+<div id="mobile-controls">
+  <div id="joystick-zone">
+    <div id="joystick-knob"></div>
+  </div>
+  <div id="mobile-actions">
+    <div id="btn-touch-up" class="mobile-btn">▲</div>
+    <div id="btn-touch-down" class="mobile-btn">▼</div>
+  </div>
 </div>
 
 <div id="status-display">
 MODEL: Loading...<br/>
-CAMERA: ORBIT OVERVIEW<br/>
-CONTROLS: Drag to Rotate | Scroll to Zoom
+CAMERA: ORBIT OVERVIEW
 </div>
 
 <script>
-// --- Scene & Renderer Setup ---
+const isTouchDevice = ('ontouchstart' in window || navigator.maxTouchPoints > 0);
+
+// --- Scene Setup ---
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x282c34);
+scene.background = new THREE.Color(0x20242b);
 
 const camera = new THREE.PerspectiveCamera(65, window.innerWidth / window.innerHeight, 0.01, 10000);
 camera.position.set(0, 30, 50);
 
-const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: 'high-performance' });
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.outputEncoding = THREE.sRGBEncoding;
@@ -216,11 +325,11 @@ controls.dampingFactor = 0.08;
 controls.maxDistance = 1000;
 controls.minDistance = 0.1;
 
-// Base grid floor
+// Grid helper
 const gridHelper = new THREE.GridHelper(100, 50, 0x00baee, 0x4f5866);
 scene.add(gridHelper);
 
-// --- Comprehensive Lighting ---
+// Lighting
 const ambientLight = new THREE.AmbientLight(0xffffff, 2.0);
 scene.add(ambientLight);
 
@@ -232,11 +341,10 @@ const sunLight = new THREE.DirectionalLight(0xffffff, 1.0);
 sunLight.position.set(50, 100, 50);
 scene.add(sunLight);
 
-// Headlamp light attached to camera
 const camLight = new THREE.PointLight(0xffffff, 50, 300, 0.5);
 scene.add(camLight);
 
-// --- State Variables ---
+// State Variables
 let currentCaveMesh = null;
 let caveBounds = null;
 let modelName = 'Loading...';
@@ -244,16 +352,19 @@ let renderStyle = 'lit';
 let activeCameraMode = 'orbit';
 let isPointerLocked = false;
 
-// Player Position & Flight Navigation
 const playerPos = new THREE.Vector3(0, 3, 0);
 let yaw = 0;
 let pitch = 0;
 let speedMultiplier = 1;
-const moveSpeed = 8.0;
+const moveSpeed = 7.0;
 const moveState = { forward: false, backward: false, left: false, right: false, moveUp: false, moveDown: false };
+const joystickVector = new THREE.Vector2(0, 0);
 
-// --- DOM Elements ---
+// DOM Elements
 const controlPanel = document.getElementById('control-panel');
+const btnToggleMenu = document.getElementById('btn-toggle-menu');
+const btnExitFPS = document.getElementById('btn-exit-fps');
+const mobileControls = document.getElementById('mobile-controls');
 const fileInput = document.getElementById('file-input');
 const btnLoadFile = document.getElementById('btn-load-file');
 const btnEnterFPS = document.getElementById('btn-enter-fps');
@@ -269,29 +380,16 @@ const lblBrightness = document.getElementById('lbl-brightness');
 const sldAmbient = document.getElementById('sld-ambient');
 const lblAmbient = document.getElementById('lbl-ambient');
 const statusDisplay = document.getElementById('status-display');
-const crosshair = document.getElementById('crosshair');
 const helpToast = document.getElementById('help-toast');
 
+if (window.innerWidth < 768) {
+  controlPanel.classList.add('hidden');
+}
+
+btnToggleMenu.addEventListener('click', () => controlPanel.classList.toggle('hidden'));
 controlPanel.addEventListener('click', (e) => e.stopPropagation());
 
-// File Loader handlers
-btnLoadFile.addEventListener('click', () => fileInput.click());
-fileInput.addEventListener('change', (e) => {
-  if (e.target.files[0]) {
-    loadCaveModel(URL.createObjectURL(e.target.files[0]), e.target.files[0].name);
-  }
-});
-
-window.addEventListener('dragover', (e) => e.preventDefault());
-window.addEventListener('drop', (e) => {
-  e.preventDefault();
-  const file = e.dataTransfer.files[0];
-  if (file && (file.name.endsWith('.glb') || file.name.endsWith('.gltf'))) {
-    loadCaveModel(URL.createObjectURL(file), file.name);
-  }
-});
-
-// Camera Mode Switching
+// Mode Switcher
 function setCameraMode(mode) {
   activeCameraMode = mode;
   btnModeOrbit.classList.toggle('active', mode === 'orbit');
@@ -300,16 +398,23 @@ function setCameraMode(mode) {
 
   if (mode === 'orbit') {
     controls.enabled = true;
-    crosshair.style.display = 'none';
-    helpToast.innerHTML = '🖱️ <b>Orbit Mode:</b> Drag to rotate | Scroll to zoom | Double-click cave to enter';
+    mobileControls.style.display = 'none';
+    btnExitFPS.style.display = 'none';
+    helpToast.innerHTML = isTouchDevice 
+      ? '🖱️ <b>Orbit Mode:</b> 1-finger rotate | 2-finger zoom | Double-tap cave to enter'
+      : '🖱️ <b>Orbit Mode:</b> Drag to rotate | Scroll to zoom | Double-click cave to enter';
     if (document.exitPointerLock) document.exitPointerLock();
   } else {
     controls.enabled = false;
-    crosshair.style.display = 'block';
-    helpToast.innerHTML = '🎮 <b>WASD:</b> Move | <b>Mouse:</b> Look | <b>Space/Ctrl:</b> Up/Down | <b>ESC:</b> Unlock Mouse';
-    try {
-      renderer.domElement.requestPointerLock();
-    } catch(e) {}
+    if (isTouchDevice) {
+      mobileControls.style.display = 'block';
+      btnExitFPS.style.display = 'block';
+      controlPanel.classList.add('hidden');
+      helpToast.innerHTML = '🎮 <b>Left Stick:</b> Walk | <b>Right Drag:</b> Look around';
+    } else {
+      helpToast.innerHTML = '🎮 <b>WASD:</b> Move | <b>Mouse:</b> Look | <b>Space/Ctrl:</b> Up/Down | <b>ESC:</b> Unlock';
+      try { renderer.domElement.requestPointerLock(); } catch(e) {}
+    }
   }
   updateStatusHUD();
 }
@@ -318,21 +423,21 @@ btnModeOrbit.addEventListener('click', () => setCameraMode('orbit'));
 btnModeFPS.addEventListener('click', () => setCameraMode('fps'));
 btnModeFly.addEventListener('click', () => setCameraMode('fly'));
 btnEnterFPS.addEventListener('click', () => setCameraMode('fps'));
+btnExitFPS.addEventListener('click', () => setCameraMode('orbit'));
 
 document.addEventListener('pointerlockchange', () => {
   isPointerLocked = (document.pointerLockElement === renderer.domElement);
-  if (!isPointerLocked && activeCameraMode !== 'orbit') {
+  if (!isPointerLocked && !isTouchDevice && activeCameraMode !== 'orbit') {
     setCameraMode('orbit');
   }
 });
 
-// Double click to teleport & enter cave at click point
-renderer.domElement.addEventListener('dblclick', (e) => {
+function handleDoubleTap(clientX, clientY) {
   if (activeCameraMode !== 'orbit' || !currentCaveMesh) return;
   const raycaster = new THREE.Raycaster();
   const mouse = new THREE.Vector2(
-    (e.clientX / window.innerWidth) * 2 - 1,
-    -(e.clientY / window.innerHeight) * 2 + 1
+    (clientX / window.innerWidth) * 2 - 1,
+    -(clientY / window.innerHeight) * 2 + 1
   );
   raycaster.setFromCamera(mouse, camera);
   const intersects = raycaster.intersectObject(currentCaveMesh, true);
@@ -341,9 +446,104 @@ renderer.domElement.addEventListener('dblclick', (e) => {
     playerPos.y += 1.0;
     setCameraMode('fps');
   }
+}
+
+renderer.domElement.addEventListener('dblclick', (e) => handleDoubleTap(e.clientX, e.clientY));
+
+// Touch swipe look handling (Right half of screen)
+let touchLookId = null;
+let lastTouchX = 0;
+let lastTouchY = 0;
+
+window.addEventListener('touchstart', (e) => {
+  if (activeCameraMode === 'orbit') return;
+  for (let i = 0; i < e.changedTouches.length; i++) {
+    const t = e.changedTouches[i];
+    if (t.clientX > window.innerWidth * 0.35 && touchLookId === null) {
+      touchLookId = t.identifier;
+      lastTouchX = t.clientX;
+      lastTouchY = t.clientY;
+    }
+  }
+}, { passive: false });
+
+window.addEventListener('touchmove', (e) => {
+  if (activeCameraMode === 'orbit') return;
+  for (let i = 0; i < e.changedTouches.length; i++) {
+    const t = e.changedTouches[i];
+    if (t.identifier === touchLookId) {
+      const dx = t.clientX - lastTouchX;
+      const dy = t.clientY - lastTouchY;
+      // Fixed: Swiping right turns camera right
+      yaw += dx * 0.005;
+      pitch -= dy * 0.005;
+      pitch = Math.max(-Math.PI / 2.1, Math.min(Math.PI / 2.1, pitch));
+      lastTouchX = t.clientX;
+      lastTouchY = t.clientY;
+    }
+  }
+}, { passive: false });
+
+window.addEventListener('touchend', (e) => {
+  for (let i = 0; i < e.changedTouches.length; i++) {
+    if (e.changedTouches[i].identifier === touchLookId) touchLookId = null;
+  }
 });
 
-// Render Style handlers
+// Virtual Joystick (Left Thumb)
+const joystickZone = document.getElementById('joystick-zone');
+const joystickKnob = document.getElementById('joystick-knob');
+let joystickTouchId = null;
+const maxRadius = 35;
+
+joystickZone.addEventListener('touchstart', (e) => {
+  const t = e.changedTouches[0];
+  joystickTouchId = t.identifier;
+  updateJoystick(t.clientX, t.clientY);
+}, { passive: false });
+
+joystickZone.addEventListener('touchmove', (e) => {
+  for (let i = 0; i < e.changedTouches.length; i++) {
+    if (e.changedTouches[i].identifier === joystickTouchId) {
+      updateJoystick(e.changedTouches[i].clientX, e.changedTouches[i].clientY);
+    }
+  }
+}, { passive: false });
+
+function resetJoystick() {
+  joystickTouchId = null;
+  joystickKnob.style.transform = 'translate(0px, 0px)';
+  joystickVector.set(0, 0);
+}
+joystickZone.addEventListener('touchend', resetJoystick);
+joystickZone.addEventListener('touchcancel', resetJoystick);
+
+function updateJoystick(clientX, clientY) {
+  const rect = joystickZone.getBoundingClientRect();
+  const centerX = rect.left + rect.width / 2;
+  const centerY = rect.top + rect.height / 2;
+  let dx = clientX - centerX;
+  let dy = clientY - centerY;
+  const dist = Math.sqrt(dx * dx + dy * dy);
+
+  if (dist > maxRadius) {
+    dx = (dx / dist) * maxRadius;
+    dy = (dy / dist) * maxRadius;
+  }
+  joystickKnob.style.transform = `translate(${dx}px, ${dy}px)`;
+  joystickVector.set(dx / maxRadius, -dy / maxRadius);
+}
+
+// Mobile Vertical Fly Buttons
+const btnTouchUp = document.getElementById('btn-touch-up');
+const btnTouchDown = document.getElementById('btn-touch-down');
+
+btnTouchUp.addEventListener('touchstart', (e) => { e.preventDefault(); moveState.moveUp = true; });
+btnTouchUp.addEventListener('touchend', () => { moveState.moveUp = false; });
+btnTouchDown.addEventListener('touchstart', (e) => { e.preventDefault(); moveState.moveDown = true; });
+btnTouchDown.addEventListener('touchend', () => { moveState.moveDown = false; });
+
+// Render Styles & High-Fidelity Textures
 function setRenderStyle(style) {
   renderStyle = style;
   btnRenderLit.classList.toggle('active', style === 'lit');
@@ -357,18 +557,27 @@ btnRenderWire.addEventListener('click', () => setRenderStyle('wire'));
 
 function applyMaterialStyle() {
   if (!currentCaveMesh) return;
+  const maxAniso = renderer.capabilities.getMaxAnisotropy();
+
   currentCaveMesh.traverse((child) => {
     if (child.isMesh && child.material) {
-      if (child.geometry) {
-        child.geometry.computeVertexNormals();
-      }
+      if (child.geometry) child.geometry.computeVertexNormals();
       const mats = Array.isArray(child.material) ? child.material : [child.material];
+      
       mats.forEach((m) => {
         m.side = THREE.DoubleSide;
         m.transparent = false;
         m.opacity = 1.0;
         m.vertexColors = false;
         m.depthWrite = true;
+
+        // Ensure texture is crisp and color-accurate
+        if (m.map) {
+          m.map.encoding = THREE.sRGBEncoding;
+          m.map.anisotropy = maxAniso;
+          m.map.needsUpdate = true;
+          m.color.setHex(0xffffff); // Pure white so texture colors show at 100% brightness
+        }
 
         if (renderStyle === 'wire') {
           m.wireframe = true;
@@ -384,11 +593,7 @@ function applyMaterialStyle() {
           m.emissiveMap = null;
           m.roughness = 0.8;
           m.metalness = 0.05;
-          if (!m.map) {
-            m.color.setHex(0x8a929e);
-          } else {
-            m.color.setHex(0xffffff);
-          }
+          if (!m.map) m.color.setHex(0x8a929e);
         }
         m.needsUpdate = true;
       });
@@ -402,7 +607,6 @@ sldBrightness.addEventListener('input', (e) => {
   camLight.intensity = val;
   lblBrightness.innerText = `Headlamp: ${val.toFixed(1)}`;
 });
-
 sldAmbient.addEventListener('input', (e) => {
   const val = parseFloat(e.target.value);
   ambientLight.intensity = val;
@@ -410,7 +614,6 @@ sldAmbient.addEventListener('input', (e) => {
   lblAmbient.innerText = `Ambient Light: ${val.toFixed(1)}`;
 });
 
-// Auto-frame cave in Orbit mode
 function frameModel() {
   if (!caveBounds) return;
   const maxDim = Math.max(caveBounds.x, caveBounds.y, caveBounds.z);
@@ -424,29 +627,25 @@ btnResetView.addEventListener('click', () => {
 });
 
 function updateStatusHUD() {
-  const modeLabel = activeCameraMode === 'orbit' ? 'ORBIT OVERVIEW' : (activeCameraMode === 'fps' ? '1ST PERSON WALK' : 'FLY MODE');
+  const modeLabel = activeCameraMode === 'orbit' ? 'ORBIT' : (activeCameraMode === 'fps' ? '1ST PERSON WALK' : 'FLY');
   statusDisplay.innerHTML = 
     `MODEL: ${modelName}<br/>` +
     `CAMERA: ${modeLabel} | STYLE: ${renderStyle.toUpperCase()}<br/>` +
     `POS: [X:${playerPos.x.toFixed(1)} Y:${playerPos.y.toFixed(1)} Z:${playerPos.z.toFixed(1)}]`;
 }
 
-// Keyboard controls
+// Desktop Keyboard
 document.addEventListener('keydown', (e) => {
-  if (e.code === 'Escape') {
-    if (activeCameraMode !== 'orbit') setCameraMode('orbit');
-    return;
-  }
+  if (e.code === 'Escape') { if (activeCameraMode !== 'orbit') setCameraMode('orbit'); return; }
   if (e.code === 'KeyW') moveState.forward = true;
   if (e.code === 'KeyS') moveState.backward = true;
   if (e.code === 'KeyA') moveState.left = true;
   if (e.code === 'KeyD') moveState.right = true;
   if (e.code === 'Space') moveState.moveUp = true;
   if (e.code === 'ControlLeft' || e.code === 'ControlRight') moveState.moveDown = true;
-  if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') speedMultiplier = 2.5;
+  if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') speedMultiplier = 2.0;
   if (e.code === 'KeyF') setCameraMode(activeCameraMode === 'fly' ? 'fps' : 'fly');
 });
-
 document.addEventListener('keyup', (e) => {
   if (e.code === 'KeyW') moveState.forward = false;
   if (e.code === 'KeyS') moveState.backward = false;
@@ -457,11 +656,18 @@ document.addEventListener('keyup', (e) => {
   if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') speedMultiplier = 1;
 });
 
+// Desktop Mouse Look (Fixed: Moving mouse right turns camera right)
 document.addEventListener('mousemove', (e) => {
   if (!isPointerLocked) return;
-  yaw -= e.movementX * 0.0025;
+  yaw += e.movementX * 0.0025;
   pitch -= e.movementY * 0.0025;
   pitch = Math.max(-Math.PI / 2.1, Math.min(Math.PI / 2.1, pitch));
+});
+
+// File Loader handlers
+btnLoadFile.addEventListener('click', () => fileInput.click());
+fileInput.addEventListener('change', (e) => {
+  if (e.target.files[0]) loadCaveModel(URL.createObjectURL(e.target.files[0]), e.target.files[0].name);
 });
 
 // GLTF Loader
@@ -484,12 +690,10 @@ function loadCaveModel(url, displayName) {
       if (currentCaveMesh) scene.remove(currentCaveMesh);
       currentCaveMesh = gltf.scene;
 
-      // Compute bounding box and center
       const box = new THREE.Box3().setFromObject(currentCaveMesh);
       const center = box.getCenter(new THREE.Vector3());
       caveBounds = box.getSize(new THREE.Vector3());
 
-      // Center model at (0,0,0)
       currentCaveMesh.position.x -= center.x;
       currentCaveMesh.position.y -= box.min.y;
       currentCaveMesh.position.z -= center.z;
@@ -497,13 +701,10 @@ function loadCaveModel(url, displayName) {
       applyMaterialStyle();
       scene.add(currentCaveMesh);
 
-      // Adjust grid size to cave footprint
       gridHelper.position.y = 0;
       gridHelper.scale.set(Math.max(1, caveBounds.x * 0.04), 1, Math.max(1, caveBounds.z * 0.04));
 
-      // Set initial player spawn
       playerPos.set(0, Math.max(1.5, caveBounds.y * 0.3), 0);
-
       modelName = `${displayName} (${Math.round(caveBounds.x)}m × ${Math.round(caveBounds.y)}m × ${Math.round(caveBounds.z)}m)`;
       
       setCameraMode('orbit');
@@ -525,14 +726,11 @@ function loadCaveModel(url, displayName) {
   );
 }
 
-// -------------------------------------------------------------
-// EXACT FILENAME MATCHING YOUR GITHUB REPO
-// -------------------------------------------------------------
+// Exact file name from repo
 const DEFAULT_MODEL = 'BuzzardCaveA-v1.glb';
-
 loadCaveModel(DEFAULT_MODEL, DEFAULT_MODEL);
 
-// --- Animation Loop ---
+// Animation Loop
 const clock = new THREE.Clock();
 
 function animate() {
@@ -543,31 +741,36 @@ function animate() {
     controls.update();
     camLight.position.copy(camera.position);
   } else {
-    // 1st Person & Fly Movement
-    if (isPointerLocked) {
-      const forward = new THREE.Vector3(Math.sin(yaw), 0, -Math.cos(yaw));
-      const right = new THREE.Vector3(Math.cos(yaw), 0, Math.sin(yaw));
-      const moveVec = new THREE.Vector3();
+    // Look direction vector
+    const forward = new THREE.Vector3(-Math.sin(yaw), 0, -Math.cos(yaw));
+    const right = new THREE.Vector3(Math.cos(yaw), 0, -Math.sin(yaw));
+    const moveVec = new THREE.Vector3();
 
-      if (moveState.forward) moveVec.add(forward);
-      if (moveState.backward) moveVec.sub(forward);
-      if (moveState.left) moveVec.sub(right);
-      if (moveState.right) moveVec.add(right);
+    // Keyboard movement
+    if (moveState.forward) moveVec.add(forward);
+    if (moveState.backward) moveVec.sub(forward);
+    if (moveState.left) moveVec.sub(right);
+    if (moveState.right) moveVec.add(right);
 
-      if (moveVec.lengthSq() > 0) {
-        moveVec.normalize();
-        playerPos.addScaledVector(moveVec, moveSpeed * speedMultiplier * deltaTime);
-      }
+    // Mobile Joystick movement
+    if (joystickVector.lengthSq() > 0.01) {
+      moveVec.addScaledVector(forward, joystickVector.y);
+      moveVec.addScaledVector(right, joystickVector.x);
+    }
 
-      if (activeCameraMode === 'fly' || activeCameraMode === 'fps') {
-        if (moveState.moveUp) playerPos.y += moveSpeed * speedMultiplier * deltaTime;
-        if (moveState.moveDown) playerPos.y -= moveSpeed * speedMultiplier * deltaTime;
-      }
+    if (moveVec.lengthSq() > 0) {
+      moveVec.normalize();
+      playerPos.addScaledVector(moveVec, moveSpeed * speedMultiplier * deltaTime);
+    }
+
+    if (activeCameraMode === 'fly' || activeCameraMode === 'fps') {
+      if (moveState.moveUp) playerPos.y += moveSpeed * speedMultiplier * deltaTime;
+      if (moveState.moveDown) playerPos.y -= moveSpeed * speedMultiplier * deltaTime;
     }
 
     camera.position.copy(playerPos);
     const lookDir = new THREE.Vector3(
-      Math.sin(yaw) * Math.cos(pitch),
+      -Math.sin(yaw) * Math.cos(pitch),
       Math.sin(pitch),
       -Math.cos(yaw) * Math.cos(pitch)
     ).normalize();
