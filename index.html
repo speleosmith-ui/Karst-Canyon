@@ -28,6 +28,9 @@
             cursor: pointer;
             z-index: 10;
         }
+        #blocker.hidden {
+            display: none;
+        }
         #instructions {
             font-size: 18px;
             line-height: 1.6;
@@ -35,6 +38,7 @@
             padding: 30px;
             border-radius: 10px;
             border: 1px solid #444;
+            pointer-events: auto;
         }
         #control-panel {
             position: absolute;
@@ -50,8 +54,11 @@
             display: flex;
             flex-direction: column;
             gap: 15px;
-            pointer-events: auto;
+            pointer-events: none;
             cursor: default;
+        }
+        #control-panel.active {
+            pointer-events: auto;
         }
         .control-group {
             display: flex;
@@ -67,6 +74,7 @@
         .slider {
             width: 100%;
             cursor: pointer;
+            pointer-events: auto;
         }
         .btn-group {
             display: flex;
@@ -82,6 +90,7 @@
             border-radius: 4px;
             font-size: 12px;
             transition: all 0.2s;
+            pointer-events: auto;
         }
         .toggle-btn.active {
             background: #007acc;
@@ -213,19 +222,43 @@ STANCE: STANDING | SIZE: 1.0x
 
         // Blocker and input
         const blocker = document.getElementById('blocker');
+        const controlPanel = document.getElementById('control-panel');
         let isLocked = false;
         
         blocker.addEventListener('click', () => {
             document.body.requestPointerLock();
+            blocker.classList.add('hidden');
+            controlPanel.classList.add('active');
             isLocked = true;
-            blocker.style.display = 'none';
         });
 
         document.addEventListener('pointerlockchange', () => {
             isLocked = document.pointerLockElement === document.body;
             if (!isLocked) {
-                blocker.style.display = 'flex';
+                blocker.classList.remove('hidden');
+                controlPanel.classList.remove('active');
             }
+        });
+
+        document.addEventListener('keydown', (e) => {
+            // ESC exits pointer lock
+            if (e.code === 'Escape') {
+                document.exitPointerLock();
+                return;
+            }
+            
+            if (e.code === 'KeyW') moveState.forward = true;
+            if (e.code === 'KeyS') moveState.backward = true;
+            if (e.code === 'KeyA') moveState.left = true;
+            if (e.code === 'KeyD') moveState.right = true;
+            if (e.code === 'Space') moveState.moveUp = true;
+            if (e.code === 'ControlLeft' || e.code === 'ControlRight') moveState.moveDown = true;
+            if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') speedMultiplier = 2;
+            if (e.code === 'KeyF') switchNavEngine(!isFlyMode);
+
+            if (e.code === 'Digit1') changeStance('stand');
+            if (e.code === 'Digit2') changeStance('crouch');
+            if (e.code === 'Digit3') changeStance('crawl');
         });
 
         let isFlyMode = false;  // Start in walk mode
@@ -266,8 +299,6 @@ STANCE: STANDING | SIZE: 1.0x
         const sldSize = document.getElementById('sld-size');
         const lblSize = document.getElementById('lbl-size');
         const statusDisplay = document.getElementById('status-display');
-
-        document.getElementById('control-panel').addEventListener('click', (e) => e.stopPropagation());
 
         sldBrightness.addEventListener('input', (e) => {
             const val = parseFloat(e.target.value);
@@ -315,21 +346,6 @@ STANCE: STANDING | SIZE: 1.0x
                 `SPEED: ${currentSpeed} u/s | Y: ${pos.y.toFixed(1)} | VEL: ${Math.abs(verticalVelocity).toFixed(1)}\n` +
                 `STANCE: ${STANCES[currentStance].label} | SIZE: ${avatarSizeMultiplier.toFixed(1)}x`;
         }
-
-        document.addEventListener('keydown', (e) => {
-            if (e.code === 'KeyW') moveState.forward = true;
-            if (e.code === 'KeyS') moveState.backward = true;
-            if (e.code === 'KeyA') moveState.left = true;
-            if (e.code === 'KeyD') moveState.right = true;
-            if (e.code === 'Space') moveState.moveUp = true;
-            if (e.code === 'ControlLeft' || e.code === 'ControlRight') moveState.moveDown = true;
-            if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') speedMultiplier = 2;
-            if (e.code === 'KeyF') switchNavEngine(!isFlyMode);
-
-            if (e.code === 'Digit1') changeStance('stand');
-            if (e.code === 'Digit2') changeStance('crouch');
-            if (e.code === 'Digit3') changeStance('crawl');
-        });
 
         document.addEventListener('keyup', (e) => {
             if (e.code === 'KeyW') moveState.forward = false;
