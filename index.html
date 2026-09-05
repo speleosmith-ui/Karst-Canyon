@@ -11,11 +11,23 @@ body, html {
   width: 100%;
   height: 100%;
   overflow: hidden;
-  background: #111418;
+  background: #05070a;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   user-select: none;
   -webkit-user-select: none;
   touch-action: none;
+}
+
+/* --- Caver Vignette Overlay --- */
+#vignette {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 5;
+  background: radial-gradient(circle at center, rgba(0,0,0,0) 55%, rgba(0,0,0,0.65) 90%, rgba(0,0,0,0.92) 100%);
 }
 
 /* --- Collapsible Control Panel --- */
@@ -242,6 +254,7 @@ body, html {
 </head>
 <body>
 
+<div id="vignette"></div>
 <input type="file" id="file-input" accept=".glb,.gltf">
 
 <button id="btn-toggle-menu">⚙️ Menu</button>
@@ -274,6 +287,14 @@ body, html {
   </div>
 
   <div class="control-group">
+    <label>Cave Audio & Ambience</label>
+    <div class="btn-group">
+      <button id="btn-toggle-audio" class="toggle-btn active">🔊 Audio: ON</button>
+    </div>
+    <input type="range" id="sld-volume" class="slider" min="0" max="1" step="0.05" value="0.7" style="margin-top: 4px;">
+  </div>
+
+  <div class="control-group">
     <label>Render Style</label>
     <div class="btn-group">
       <button id="btn-render-lit" class="toggle-btn active">Lit</button>
@@ -283,13 +304,13 @@ body, html {
   </div>
 
   <div class="control-group">
-    <label id="lbl-brightness">Headlamp: 15.0</label>
-    <input type="range" id="sld-brightness" class="slider" min="0" max="60" step="0.5" value="15">
+    <label id="lbl-brightness">Headlamp Power: 25.0</label>
+    <input type="range" id="sld-brightness" class="slider" min="0" max="80" step="1" value="25">
   </div>
 
   <div class="control-group">
-    <label id="lbl-ambient">Ambient Light: 0.4</label>
-    <input type="range" id="sld-ambient" class="slider" min="0" max="2" step="0.05" value="0.4">
+    <label id="lbl-ambient">Ambient Light: 0.15</label>
+    <input type="range" id="sld-ambient" class="slider" min="0" max="1" step="0.02" value="0.15">
   </div>
 
   <div class="control-group">
@@ -321,9 +342,8 @@ const isTouchDevice = ('ontouchstart' in window || navigator.maxTouchPoints > 0)
 
 // --- Scene Setup ---
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x111418);
+scene.background = new THREE.Color(0x05070a);
 
-// Near clipping set to 2mm (0.002m) so close 1cm crawling never clips the ground
 const camera = new THREE.PerspectiveCamera(65, window.innerWidth / window.innerHeight, 0.002, 10000);
 camera.position.set(0, 30, 50);
 
@@ -342,35 +362,178 @@ controls.dampingFactor = 0.08;
 controls.maxDistance = 1000;
 controls.minDistance = 0.05;
 
-// Grid helper
-const gridHelper = new THREE.GridHelper(100, 50, 0x00baee, 0x2e3540);
+// Subtle Grid
+const gridHelper = new THREE.GridHelper(100, 50, 0x00baee, 0x1f242d);
 scene.add(gridHelper);
 
-// Lighting
-const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
+// Very low ambient light to mimic true deep cave darkness
+const ambientLight = new THREE.AmbientLight(0xffffff, 0.15);
 scene.add(ambientLight);
 
-const hemiLight = new THREE.HemisphereLight(0xffffff, 0x222222, 0.3);
+const hemiLight = new THREE.HemisphereLight(0x88aacc, 0x111111, 0.1);
 hemiLight.position.set(0, 100, 0);
 scene.add(hemiLight);
 
-const sunLight = new THREE.DirectionalLight(0xffffff, 0.3);
-sunLight.position.set(50, 100, 50);
-scene.add(sunLight);
+// --- Caver's Dual-Beam Headlamp Setup ---
+// 1. Focused Hot-Spot Beam
+const spotCenter = new THREE.SpotLight(0xfff3e0, 25, 120, Math.PI / 6, 0.4, 1.2);
+scene.add(spotCenter);
+scene.add(spotCenter.target);
 
-// Headlamp light
-const camLight = new THREE.PointLight(0xffffff, 15, 200, 1);
-scene.add(camLight);
+// 2. Wide Flood Spill Light
+const spotSpill = new THREE.SpotLight(0xffeedd, 8, 45, Math.PI / 2.3, 0.9, 1.8);
+scene.add(spotSpill);
+scene.add(spotSpill.target);
+
+// 3. Proximity Bulb (Illuminates hands, knees, and rocks 1cm away)
+const proximityLight = new THREE.PointLight(0xffeacc, 0.8, 4, 1.5);
+scene.add(proximityLight);
+
+// --- Atmospheric Cave Dust Particles ---
+const dustCount = 200;
+const dustGeo = new THREE.BufferGeometry();
+const dustPos = new Float32Array(dustCount * 3);
+for(let i=0; i<dustCount*3; i+=3){
+  dustPos[i] = (Math.random() - 0.5) * 8;
+  dustPos[i+1] = (Math.random() - 0.5) * 4;
+  dustPos[i+2] = (Math.random() - 0.5) * 8;
+}
+dustGeo.setAttribute('position', new THREE.BufferAttribute(dustPos, 3));
+const dustMat = new THREE.PointsMaterial({
+  color: 0xddeeff,
+  size: 0.025,
+  transparent: true,
+  opacity: 0.45,
+  blending: THREE.AdditiveBlending
+});
+const dustParticles = new THREE.Points(dustGeo, dustMat);
+scene.add(dustParticles);
+
+// --- Procedural Cave Audio Engine (Web Audio API) ---
+let audioCtx = null;
+let masterGain = null;
+let isAudioEnabled = true;
+let isAudioInitialized = false;
+let ambienceNode = null;
+let stepTimer = 0;
+let stepCycle = 0;
+
+function initCaveAudio() {
+  if (isAudioInitialized) return;
+  try {
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    audioCtx = new AudioContext();
+    masterGain = audioCtx.createGain();
+    masterGain.gain.value = 0.7;
+    masterGain.connect(audioCtx.destination);
+
+    // Deep Cave Subterranean Rumble (Filtered Pink/Brown Noise)
+    const bufferSize = audioCtx.sampleRate * 2;
+    const noiseBuffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+    const output = noiseBuffer.getChannelData(0);
+    let lastOut = 0.0;
+    for (let i = 0; i < bufferSize; i++) {
+      const white = Math.random() * 2 - 1;
+      output[i] = (lastOut + (0.02 * white)) / 1.02;
+      lastOut = output[i];
+      output[i] *= 3.5;
+    }
+
+    const whiteNoise = audioCtx.createBufferSource();
+    whiteNoise.buffer = noiseBuffer;
+    whiteNoise.loop = true;
+
+    const filter = audioCtx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.value = 140;
+
+    const ambGain = audioCtx.createGain();
+    ambGain.gain.value = 0.28;
+
+    whiteNoise.connect(filter);
+    filter.connect(ambGain);
+    ambGain.connect(masterGain);
+    whiteNoise.start(0);
+
+    // Schedule echoing water droplets
+    scheduleWaterDrop();
+
+    isAudioInitialized = true;
+  } catch(e) {
+    console.warn('Web Audio could not start:', e);
+  }
+}
+
+function playWaterDrop() {
+  if (!isAudioEnabled || !audioCtx || audioCtx.state !== 'running') return;
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  const freq = 1200 + Math.random() * 800;
+
+  osc.type = 'sine';
+  osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+  osc.frequency.exponentialRampToValueAtTime(freq * 0.4, audioCtx.currentTime + 0.12);
+
+  gain.gain.setValueAtTime(0.18 + Math.random() * 0.12, audioCtx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.35);
+
+  osc.connect(gain);
+  gain.connect(masterGain);
+
+  osc.start();
+  osc.stop(audioCtx.currentTime + 0.35);
+}
+
+function scheduleWaterDrop() {
+  const delay = 2500 + Math.random() * 4500;
+  setTimeout(() => {
+    playWaterDrop();
+    scheduleWaterDrop();
+  }, delay);
+}
+
+// Procedural Movement Audio (Gravel Boot Steps vs Knee/Glove Crawl Scrapes)
+function playMovementSound(isCrawling) {
+  if (!isAudioEnabled || !audioCtx || audioCtx.state !== 'running') return;
+
+  const now = audioCtx.currentTime;
+  const dur = isCrawling ? 0.22 : 0.09;
+  const bufferSize = audioCtx.sampleRate * dur;
+  const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+  const data = buffer.getChannelData(0);
+
+  for (let i = 0; i < bufferSize; i++) {
+    data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (bufferSize * 0.5));
+  }
+
+  const noise = audioCtx.createBufferSource();
+  noise.buffer = buffer;
+
+  const filter = audioCtx.createBiquadFilter();
+  filter.type = isCrawling ? 'bandpass' : 'lowpass';
+  filter.frequency.value = isCrawling ? (600 + Math.random() * 400) : (350 + Math.random() * 200);
+  filter.Q.value = isCrawling ? 2.5 : 1.0;
+
+  const gain = audioCtx.createGain();
+  const vol = isCrawling ? (0.2 + Math.random() * 0.1) : (0.35 + Math.random() * 0.15);
+  gain.gain.setValueAtTime(vol, now);
+  gain.gain.exponentialRampToValueAtTime(0.001, now + dur);
+
+  noise.connect(filter);
+  filter.connect(gain);
+  gain.connect(masterGain);
+
+  noise.start(now);
+}
 
 // State Variables
 let currentCaveMesh = null;
 let caveBounds = null;
 let modelName = 'Loading...';
 let renderStyle = 'lit';
-let activeCameraMode = 'orbit'; // 'orbit', 'walk', 'fly'
+let activeCameraMode = 'orbit';
 let isPointerLocked = false;
 
-// Height & Dynamic Scaling Speed
 let eyeHeight = 1.60; 
 let baseMoveSpeed = 5.5; 
 let currentScaledSpeed = 5.5;
@@ -405,6 +568,9 @@ const btnPresetCrouch = document.getElementById('btn-preset-crouch');
 const btnPresetCrawl = document.getElementById('btn-preset-crawl');
 const btnPresetMicro = document.getElementById('btn-preset-micro');
 
+const btnToggleAudio = document.getElementById('btn-toggle-audio');
+const sldVolume = document.getElementById('sld-volume');
+
 const btnRenderLit = document.getElementById('btn-render-lit');
 const btnRenderUnlit = document.getElementById('btn-render-unlit');
 const btnRenderWire = document.getElementById('btn-render-wire');
@@ -424,12 +590,25 @@ if (window.innerWidth < 768) {
 btnToggleMenu.addEventListener('click', () => controlPanel.classList.toggle('hidden'));
 controlPanel.addEventListener('click', (e) => e.stopPropagation());
 
-// Update Height and Dynamic Scaling Speed
+// Audio Listeners
+btnToggleAudio.addEventListener('click', () => {
+  initCaveAudio();
+  if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+  isAudioEnabled = !isAudioEnabled;
+  btnToggleAudio.innerText = `🔊 Audio: ${isAudioEnabled ? 'ON' : 'OFF'}`;
+  btnToggleAudio.classList.toggle('active', isAudioEnabled);
+  if (masterGain) masterGain.gain.value = isAudioEnabled ? parseFloat(sldVolume.value) : 0;
+});
+
+sldVolume.addEventListener('input', (e) => {
+  if (masterGain && isAudioEnabled) masterGain.gain.value = parseFloat(e.target.value);
+});
+
+// Height & Dynamic Speed
 function updateHeightAndSpeed(val) {
   eyeHeight = parseFloat(val);
   sldHeight.value = eyeHeight.toFixed(2);
 
-  // Speed scales with height (1.6m = ~5.5m/s, down to 1cm = ~0.08m/s micro crawl)
   const normalized = Math.max(0.01, eyeHeight / 1.6);
   currentScaledSpeed = Math.max(0.08, baseMoveSpeed * Math.pow(normalized, 0.85));
 
@@ -454,6 +633,9 @@ btnPresetMicro.addEventListener('click', () => updateHeightAndSpeed(0.01));
 
 // Mode Switcher
 function setCameraMode(mode) {
+  initCaveAudio();
+  if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+
   activeCameraMode = mode;
   btnModeOrbit.classList.toggle('active', mode === 'orbit');
   btnModeWalk.classList.toggle('active', mode === 'walk');
@@ -474,12 +656,12 @@ function setCameraMode(mode) {
       btnExitFPS.style.display = 'block';
       controlPanel.classList.add('hidden');
       helpToast.innerHTML = mode === 'walk' 
-        ? '🚶 <b>Walk Mode:</b> Follows floor contours'
-        : '✈️ <b>Fly Mode:</b> Move in line of sight (Noclip)';
+        ? '🚶 <b>Walk Mode:</b> Follows floor | Headlamp on'
+        : '✈️ <b>Fly Mode:</b> Move in sight line';
     } else {
       helpToast.innerHTML = mode === 'walk'
-        ? '🚶 <b>Walk Mode:</b> W/A/S/D follows cave floor | Mouse: Look | ESC: Unlock'
-        : '✈️ <b>Fly Mode:</b> W moves into line of sight | Mouse: Look | ESC: Unlock';
+        ? '🚶 <b>Walk Mode:</b> W/A/S/D follows cave floor | ESC: Unlock'
+        : '✈️ <b>Fly Mode:</b> W moves in sight line | ESC: Unlock';
       try { renderer.domElement.requestPointerLock(); } catch(e) {}
     }
   }
@@ -517,7 +699,7 @@ function handleDoubleTap(clientX, clientY) {
 
 renderer.domElement.addEventListener('dblclick', (e) => handleDoubleTap(e.clientX, e.clientY));
 
-// Touch swipe look handling (Right half of screen)
+// Touch swipe look handling
 let touchLookId = null;
 let lastTouchX = 0;
 let lastTouchY = 0;
@@ -541,7 +723,6 @@ window.addEventListener('touchmove', (e) => {
     if (t.identifier === touchLookId) {
       const dx = t.clientX - lastTouchX;
       const dy = t.clientY - lastTouchY;
-      // Fixed: Swiping right turns camera right
       yaw += dx * 0.005;
       pitch -= dy * 0.005;
       pitch = Math.max(-Math.PI / 2.05, Math.min(Math.PI / 2.05, pitch));
@@ -601,7 +782,7 @@ function updateJoystick(clientX, clientY) {
   joystickVector.set(dx / maxRadius, -dy / maxRadius);
 }
 
-// Mobile Vertical Fly Buttons
+// Mobile Fly Buttons
 const btnTouchUp = document.getElementById('btn-touch-up');
 const btnTouchDown = document.getElementById('btn-touch-down');
 
@@ -657,9 +838,9 @@ function applyMaterialStyle() {
           m.wireframe = false;
           m.emissive.setHex(0x000000);
           m.emissiveMap = null;
-          m.roughness = 0.9;
+          m.roughness = 0.95;
           m.metalness = 0.0;
-          if (!m.map) m.color.setHex(0x777e8a);
+          if (!m.map) m.color.setHex(0x6e7682);
         }
         m.needsUpdate = true;
       });
@@ -670,8 +851,10 @@ function applyMaterialStyle() {
 // Sliders
 sldBrightness.addEventListener('input', (e) => {
   const val = parseFloat(e.target.value);
-  camLight.intensity = val;
-  lblBrightness.innerText = `Headlamp: ${val.toFixed(1)}`;
+  spotCenter.intensity = val;
+  spotSpill.intensity = val * 0.35;
+  proximityLight.intensity = val * 0.04;
+  lblBrightness.innerText = `Headlamp Power: ${val.toFixed(1)}`;
 });
 sldAmbient.addEventListener('input', (e) => {
   const val = parseFloat(e.target.value);
@@ -715,7 +898,7 @@ document.addEventListener('keydown', (e) => {
   if (e.code === 'KeyD') moveState.right = true;
   if (e.code === 'Space') moveState.moveUp = true;
   if (e.code === 'ControlLeft' || e.code === 'ControlRight') moveState.moveDown = true;
-  if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') speedMultiplier = 2.0;
+  if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') speedMultiplier = 1.8;
   if (e.code === 'KeyF') setCameraMode(activeCameraMode === 'walk' ? 'fly' : 'walk');
 });
 document.addEventListener('keyup', (e) => {
@@ -728,7 +911,7 @@ document.addEventListener('keyup', (e) => {
   if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') speedMultiplier = 1;
 });
 
-// Fixed Desktop Mouse Look (Moving mouse right turns camera right)
+// Fixed Desktop Mouse Look
 document.addEventListener('mousemove', (e) => {
   if (!isPointerLocked) return;
   yaw += e.movementX * 0.0025;
@@ -801,7 +984,7 @@ function loadCaveModel(url, displayName) {
 const DEFAULT_MODEL = 'BuzzardCaveA-v1.glb';
 loadCaveModel(DEFAULT_MODEL, DEFAULT_MODEL);
 
-// --- Surface Raycaster / Ground Snapping (Supports 2m down to 1cm) ---
+// Ground Snapping
 function snapToMeshFloor(deltaTime) {
   if (!currentCaveMesh) return;
 
@@ -835,7 +1018,11 @@ function animate() {
 
   if (activeCameraMode === 'orbit') {
     controls.update();
-    camLight.position.copy(camera.position);
+    spotCenter.position.copy(camera.position);
+    spotCenter.target.position.copy(controls.target);
+    spotSpill.position.copy(camera.position);
+    spotSpill.target.position.copy(controls.target);
+    proximityLight.position.copy(camera.position);
   } else {
     // 3D Look Direction
     const lookDir = new THREE.Vector3(
@@ -847,21 +1034,16 @@ function animate() {
     let forward, right;
 
     if (activeCameraMode === 'fly') {
-      // Fly 3D: W moves directly into sight line
       forward = lookDir.clone();
       const worldUp = new THREE.Vector3(0, 1, 0);
       right = new THREE.Vector3().crossVectors(forward, worldUp).normalize();
-      if (right.lengthSq() < 0.001) {
-        right = new THREE.Vector3(Math.cos(yaw), 0, Math.sin(yaw));
-      }
+      if (right.lengthSq() < 0.001) right = new THREE.Vector3(Math.cos(yaw), 0, Math.sin(yaw));
     } else {
-      // Walk: Moves horizontally across cave floor
       forward = new THREE.Vector3(Math.sin(yaw), 0, -Math.cos(yaw)).normalize();
       right = new THREE.Vector3(Math.cos(yaw), 0, Math.sin(yaw)).normalize();
     }
 
     const moveVec = new THREE.Vector3();
-
     if (moveState.forward) moveVec.add(forward);
     if (moveState.backward) moveVec.sub(forward);
     if (moveState.left) moveVec.sub(right);
@@ -872,9 +1054,22 @@ function animate() {
       moveVec.addScaledVector(right, joystickVector.x);
     }
 
-    if (moveVec.lengthSq() > 0) {
+    const isMoving = moveVec.lengthSq() > 0.001;
+    if (isMoving) {
       moveVec.normalize();
-      playerPos.addScaledVector(moveVec, currentScaledSpeed * speedMultiplier * deltaTime);
+      const stepDist = currentScaledSpeed * speedMultiplier * deltaTime;
+      playerPos.addScaledVector(moveVec, stepDist);
+
+      // Procedural audio step timing & head-bobbing
+      const isCrawling = (eyeHeight < 1.0);
+      const stepInterval = isCrawling ? (0.45 / (currentScaledSpeed * 0.4)) : (0.40 / currentScaledSpeed);
+      stepTimer += deltaTime;
+      stepCycle += deltaTime * (isCrawling ? 7.0 : 10.0);
+
+      if (stepTimer >= Math.max(0.2, stepInterval)) {
+        stepTimer = 0;
+        playMovementSound(isCrawling);
+      }
     }
 
     if (activeCameraMode === 'walk') {
@@ -884,9 +1079,34 @@ function animate() {
       if (moveState.moveDown) playerPos.y -= currentScaledSpeed * speedMultiplier * deltaTime;
     }
 
-    camera.position.copy(playerPos);
-    camera.lookAt(camera.position.clone().add(lookDir));
-    camLight.position.copy(camera.position);
+    // Realistic head bobbing & shoulder sway
+    let bobY = 0;
+    let bobRoll = 0;
+    if (isMoving && activeCameraMode === 'walk') {
+      const bobMagnitude = (eyeHeight < 1.0) ? (eyeHeight * 0.04) : 0.035;
+      bobY = Math.sin(stepCycle) * bobMagnitude;
+      bobRoll = Math.cos(stepCycle * 0.5) * 0.008;
+    }
+
+    camera.position.set(playerPos.x, playerPos.y + bobY, playerPos.z);
+    camera.rotation.z = bobRoll;
+
+    const targetLook = camera.position.clone().add(lookDir);
+    camera.lookAt(targetLook);
+
+    // Caver Headlamp alignment
+    spotCenter.position.copy(camera.position);
+    spotCenter.target.position.copy(targetLook);
+
+    spotSpill.position.copy(camera.position);
+    spotSpill.target.position.copy(targetLook);
+
+    proximityLight.position.copy(camera.position);
+
+    // Drifting Cave Dust Motes in Light Beam
+    dustParticles.position.copy(camera.position);
+    dustParticles.rotation.y += 0.001;
+
     updateStatusHUD();
   }
 
