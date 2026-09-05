@@ -386,7 +386,7 @@ CAMERA: ORBIT OVERVIEW
 <script>
 const isTouchDevice = ('ontouchstart' in window || navigator.maxTouchPoints > 0);
 
-// --- Custom Coordinate Locations ---
+// --- Custom Coordinates ---
 const PLAYER_SPAWN_POS = new THREE.Vector3(5.1, 8.0, -1.3);
 const VULTURE_SPAWN_POS = new THREE.Vector3(-2.9, 4.0, 1.1);
 
@@ -436,7 +436,7 @@ scene.add(spotSpill.target);
 const proximityLight = new THREE.PointLight(0xffeacc, 0.8, 4, 1.5);
 scene.add(proximityLight);
 
-// --- Procedural 3D Turkey Vulture ---
+// --- Procedural 3D Turkey Vulture (Scaled to 50%) ---
 let isVultureEnabled = true;
 const vultureGroup = new THREE.Group();
 let vultureLeftWing = null;
@@ -512,7 +512,8 @@ function buildVultureModel() {
     vultureGroup.add(bone);
   }
 
-  // Exact location given by user
+  // Scaled down to half size (0.5x)
+  vultureGroup.scale.set(0.5, 0.5, 0.5);
   vultureGroup.position.copy(VULTURE_SPAWN_POS);
   scene.add(vultureGroup);
 }
@@ -520,26 +521,26 @@ function buildVultureModel() {
 buildVultureModel();
 
 // Projectile Vomit System
-const vomitGeo = new THREE.SphereGeometry(0.04, 6, 6);
+const vomitGeo = new THREE.SphereGeometry(0.03, 6, 6);
 const vomitMat = new THREE.MeshStandardMaterial({ color: 0x76b810, roughness: 0.2, emissive: 0x2a4400 });
 
 function spawnVomitBurst() {
   const beakWorld = new THREE.Vector3();
   if (vultureHead) vultureHead.getWorldPosition(beakWorld);
-  beakWorld.y -= 0.05;
+  beakWorld.y -= 0.03;
 
   const targetDir = playerPos.clone().sub(beakWorld).normalize();
 
-  for (let i = 0; i < 26; i++) {
+  for (let i = 0; i < 24; i++) {
     const p = new THREE.Mesh(vomitGeo, vomitMat);
     p.position.copy(beakWorld);
     const spread = new THREE.Vector3(
-      (Math.random() - 0.5) * 0.4,
-      (Math.random() - 0.5) * 0.35 + 0.18,
-      (Math.random() - 0.5) * 0.4
+      (Math.random() - 0.5) * 0.35,
+      (Math.random() - 0.5) * 0.3 + 0.15,
+      (Math.random() - 0.5) * 0.35
     );
-    const vel = targetDir.clone().multiplyScalar(7.8 + Math.random() * 3.5).add(spread);
-    vomitParticles.push({ mesh: p, velocity: vel, life: 1.8 });
+    const vel = targetDir.clone().multiplyScalar(6.5 + Math.random() * 3.0).add(spread);
+    vomitParticles.push({ mesh: p, velocity: vel, life: 1.6 });
     scene.add(p);
   }
 }
@@ -579,7 +580,6 @@ function initCaveAudio() {
   }
 }
 
-// Unlock audio on any global user interaction
 window.addEventListener('click', () => initCaveAudio(), { once: true });
 window.addEventListener('keydown', () => initCaveAudio(), { once: true });
 window.addEventListener('touchstart', () => initCaveAudio(), { once: true });
@@ -703,7 +703,6 @@ function playCrawlScrapeSound() {
   noise.start(now);
 }
 
-// Labored Crawling Heavy Breathing
 function playHeavyBreath(isInhale) {
   if (!isAudioEnabled || !audioCtx || audioCtx.state !== 'running') return;
   const now = audioCtx.currentTime;
@@ -818,7 +817,6 @@ if (window.innerWidth < 768) {
 btnToggleMenu.addEventListener('click', () => controlPanel.classList.toggle('hidden'));
 controlPanel.addEventListener('click', (e) => e.stopPropagation());
 
-// Speed Slider
 sldSpeed.addEventListener('input', (e) => {
   baseMoveSpeed = parseFloat(e.target.value);
   lblSpeed.innerText = `Base Move Speed: ${baseMoveSpeed.toFixed(1)} m/s`;
@@ -854,7 +852,6 @@ btnPresetCrouch.addEventListener('click', () => updateHeightAndSpeed(0.80));
 btnPresetCrawl.addEventListener('click', () => updateHeightAndSpeed(0.20));
 btnPresetMicro.addEventListener('click', () => updateHeightAndSpeed(0.01));
 
-// Camera Mode Switcher
 function setCameraMode(mode) {
   initCaveAudio();
 
@@ -894,7 +891,6 @@ btnModeOrbit.addEventListener('click', () => setCameraMode('orbit'));
 btnModeWalk.addEventListener('click', () => setCameraMode('walk'));
 btnModeFly.addEventListener('click', () => setCameraMode('fly'));
 
-// Enter Cave spawns at exact designated coordinates
 btnEnterFPS.addEventListener('click', () => {
   playerPos.copy(PLAYER_SPAWN_POS);
   yaw = 0;
@@ -1161,9 +1157,9 @@ btnToggleVulture.addEventListener('click', () => {
   btnToggleVulture.classList.toggle('active', isVultureEnabled);
 });
 
-// Teleport directly to the vulture nest
+// Teleport 5.5m in front of nest so you can approach the 5m hissing zone
 btnTpVulture.addEventListener('click', () => {
-  playerPos.set(VULTURE_SPAWN_POS.x, VULTURE_SPAWN_POS.y + eyeHeight, VULTURE_SPAWN_POS.z + 3.0);
+  playerPos.set(VULTURE_SPAWN_POS.x, VULTURE_SPAWN_POS.y + eyeHeight, VULTURE_SPAWN_POS.z + 5.5);
   yaw = Math.PI;
   pitch = -0.05;
   setCameraMode('walk');
@@ -1216,7 +1212,6 @@ function loadCaveModel(url, displayName) {
         gridHelper.position.y = 0;
         gridHelper.scale.set(Math.max(1, caveBounds.x * 0.04), 1, Math.max(1, caveBounds.z * 0.04));
 
-        // Start at user specified entrance coordinates
         playerPos.copy(PLAYER_SPAWN_POS);
         modelName = `${displayName} (${Math.round(caveBounds.x)}m × ${Math.round(caveBounds.y)}m × ${Math.round(caveBounds.z)}m)`;
         
@@ -1245,29 +1240,38 @@ function loadCaveModel(url, displayName) {
 const DEFAULT_MODEL = 'BuzzardCaveA-v1.glb';
 loadCaveModel(DEFAULT_MODEL, DEFAULT_MODEL);
 
-// Ground Snapping
+// --- Solid Floor Surface Raycaster (Prevents Sinking & Clipping) ---
 function snapToMeshFloor(deltaTime) {
-  if (!currentCaveMesh) return;
+  if (!currentCaveMesh) return null;
 
+  // Raycast from well above the player position downwards
   const rayOrigin = playerPos.clone();
-  rayOrigin.y += Math.max(0.2, eyeHeight * 0.8); 
+  rayOrigin.y += Math.max(0.6, eyeHeight * 1.5); 
   groundRaycaster.set(rayOrigin, downVector);
-  groundRaycaster.far = Math.max(3.0, eyeHeight * 4.0);
+  groundRaycaster.far = Math.max(4.0, eyeHeight * 4.0 + 2.0);
 
   const hits = groundRaycaster.intersectObject(currentCaveMesh, true);
   if (hits.length > 0) {
     let validHit = null;
     for (let i = 0; i < hits.length; i++) {
-      if (hits[i].distance > 0.002) {
+      if (hits[i].distance > 0.001) {
         validHit = hits[i];
         break;
       }
     }
     if (validHit) {
       const targetY = validHit.point.y + eyeHeight;
-      playerPos.y = THREE.MathUtils.lerp(playerPos.y, targetY, Math.min(1.0, 14.0 * deltaTime));
+      // Solid Floor: Instantly snap up if beneath floor level
+      if (playerPos.y < targetY) {
+        playerPos.y = targetY;
+      } else {
+        // Smoothly glide down drops
+        playerPos.y = THREE.MathUtils.lerp(playerPos.y, targetY, Math.min(1.0, 20.0 * deltaTime));
+      }
+      return validHit.point.y;
     }
   }
+  return null;
 }
 
 // Animation Loop
@@ -1325,7 +1329,6 @@ function animate() {
 
       stepCycle += deltaTime * (isCrawling ? 6.5 : 9.5) * speedMultiplier;
 
-      // Crawling scrape sound
       if (isCrawling) {
         stepTimer += deltaTime;
         const crawlInterval = Math.max(0.25, 0.45 / Math.max(0.5, currentScaledSpeed));
@@ -1336,7 +1339,6 @@ function animate() {
       }
     }
 
-    // Heavy Labored Breathing while in Crawling stance (<1.0m)
     if (isCrawling && isAudioEnabled) {
       breathTimer += deltaTime;
       const breathInterval = isMoving ? 1.35 : 1.95;
@@ -1347,34 +1349,34 @@ function animate() {
       }
     }
 
+    // Apply Solid Ground Snapping
+    let floorHitY = null;
     if (activeCameraMode === 'walk') {
-      snapToMeshFloor(deltaTime);
+      floorHitY = snapToMeshFloor(deltaTime);
     } else {
       if (moveState.moveUp) playerPos.y += currentScaledSpeed * speedMultiplier * deltaTime;
       if (moveState.moveDown) playerPos.y -= currentScaledSpeed * speedMultiplier * deltaTime;
     }
 
-    // --- Dynamic Head Bobbing for Walking & Crawling ---
+    // --- Dynamic Head Bobbing & Solid Ground Clamping ---
     let bobY = 0;
     let bobX = 0;
     let bobRoll = 0;
 
     if (isMoving && (activeCameraMode === 'walk' || activeCameraMode === 'fly')) {
       if (isCrawling) {
-        // Crawling: Heavy shoulder heave & side-to-side crawl sway
-        bobY = Math.sin(stepCycle) * (Math.max(0.015, eyeHeight * 0.07));
-        bobX = Math.cos(stepCycle * 0.5) * 0.035;
-        bobRoll = Math.cos(stepCycle * 0.5) * 0.022;
+        const maxBob = Math.min(0.04, eyeHeight * 0.25);
+        bobY = Math.sin(stepCycle) * maxBob;
+        bobX = Math.cos(stepCycle * 0.5) * Math.min(0.02, eyeHeight * 0.2);
+        bobRoll = Math.cos(stepCycle * 0.5) * 0.015;
       } else {
-        // Walking: Step bounce & subtle lateral walking sway
-        bobY = Math.abs(Math.sin(stepCycle)) * 0.055;
-        bobX = Math.cos(stepCycle * 0.5) * 0.022;
-        bobRoll = Math.cos(stepCycle * 0.5) * 0.012;
+        bobY = Math.abs(Math.sin(stepCycle)) * 0.05;
+        bobX = Math.cos(stepCycle * 0.5) * 0.02;
+        bobRoll = Math.cos(stepCycle * 0.5) * 0.01;
       }
     } else {
-      // Idle breathing rise and fall
       const idleTime = clock.getElapsedTime();
-      bobY = Math.sin(idleTime * (isCrawling ? 2.4 : 1.4)) * (isCrawling ? 0.01 : 0.004);
+      bobY = Math.sin(idleTime * (isCrawling ? 2.4 : 1.4)) * (isCrawling ? 0.008 : 0.003);
     }
 
     const rightHorizontal = new THREE.Vector3(Math.cos(yaw), 0, Math.sin(yaw)).normalize();
@@ -1382,11 +1384,19 @@ function animate() {
     camera.position.y += bobY;
     camera.position.addScaledVector(rightHorizontal, bobX);
 
+    // Strict Floor Collision: Camera position NEVER dips beneath solid floor
+    if (floorHitY !== null) {
+      const minCamY = floorHitY + Math.max(0.003, eyeHeight * 0.85);
+      if (camera.position.y < minCamY) {
+        camera.position.y = minCamY;
+      }
+    }
+
     const targetLook = camera.position.clone().add(lookDir);
     camera.lookAt(targetLook);
     camera.rotation.z += bobRoll;
 
-    // --- Vulture State Machine ---
+    // --- Vulture State Machine (Hiss at 5m, Vomit at 1m) ---
     if (isVultureEnabled && vultureGroup && vultureHead && vultureLeftWing && vultureRightWing) {
       const distToVulture = playerPos.distanceTo(vultureGroup.position);
       
@@ -1402,10 +1412,12 @@ function animate() {
         vultureLeftWing.rotation.z = Math.sin(clock.getElapsedTime() * 1.5) * 0.02;
         vultureRightWing.rotation.z = -Math.sin(clock.getElapsedTime() * 1.5) * 0.02;
 
-        if (distToVulture <= 8.0 && distToVulture > 4.6) {
+        // Stage 1: Warning Hiss starts at 5m away
+        if (distToVulture <= 5.0 && distToVulture > 1.0) {
           vultureState = 'hissing';
           vultureTimer = 0;
-        } else if (distToVulture <= 4.6 && distToVulture > 0.5) {
+        } else if (distToVulture <= 1.0 && distToVulture > 0.05) {
+          // Stage 2: Vomit attack triggers at 1m away
           vultureState = 'retching';
           vultureTimer = 0;
         }
@@ -1415,15 +1427,15 @@ function animate() {
         vultureLeftWing.rotation.z = 0.18 + Math.sin(vultureTimer * 12.0) * 0.04;
         vultureRightWing.rotation.z = -0.18 - Math.sin(vultureTimer * 12.0) * 0.04;
 
-        if (clock.getElapsedTime() - lastHissTime > 2.2) {
+        if (clock.getElapsedTime() - lastHissTime > 2.0) {
           lastHissTime = clock.getElapsedTime();
           playVultureThroatHiss();
         }
 
-        if (distToVulture <= 4.6 && distToVulture > 0.5) {
+        if (distToVulture <= 1.0 && distToVulture > 0.05) {
           vultureState = 'retching';
           vultureTimer = 0;
-        } else if (distToVulture > 9.0) {
+        } else if (distToVulture > 6.5) {
           vultureState = 'recovering';
         }
       } else if (vultureState === 'retching') {
@@ -1457,7 +1469,7 @@ function animate() {
         vultureRightWing.rotation.z = THREE.MathUtils.lerp(vultureRightWing.rotation.z, 0, 3.5 * deltaTime);
         vultureHead.position.z = THREE.MathUtils.lerp(vultureHead.position.z, 0.28, 3.5 * deltaTime);
 
-        if (distToVulture > 9.0) {
+        if (distToVulture > 6.5) {
           vultureState = 'dormant';
         }
       }
