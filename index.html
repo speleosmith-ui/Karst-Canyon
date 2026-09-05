@@ -154,7 +154,7 @@ body, html {
 
 <div id="control-panel">
   <button id="btn-enter-fps" class="primary-btn">🎮 Enter Cave (1st Person)</button>
-  <button id="btn-load-file" class="action-btn">📂 Open GLB Cave File</button>
+  <button id="btn-load-file" class="action-btn">📂 Open Another GLB File</button>
 
   <div class="control-group">
     <label>Camera Mode</label>
@@ -196,7 +196,7 @@ CONTROLS: Drag to Rotate | Scroll to Zoom
 <script>
 // --- Scene & Renderer Setup ---
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x282c34); // Slate grey studio background
+scene.background = new THREE.Color(0x282c34);
 
 const camera = new THREE.PerspectiveCamera(65, window.innerWidth / window.innerHeight, 0.01, 10000);
 camera.position.set(0, 30, 50);
@@ -367,7 +367,7 @@ function applyMaterialStyle() {
         m.side = THREE.DoubleSide;
         m.transparent = false;
         m.opacity = 1.0;
-        m.vertexColors = false; // Prevent black photogrammetry vertex attributes
+        m.vertexColors = false;
         m.depthWrite = true;
 
         if (renderStyle === 'wire') {
@@ -385,7 +385,7 @@ function applyMaterialStyle() {
           m.roughness = 0.8;
           m.metalness = 0.05;
           if (!m.map) {
-            m.color.setHex(0x8a929e); // Rock color fallback
+            m.color.setHex(0x8a929e);
           } else {
             m.color.setHex(0xffffff);
           }
@@ -471,11 +471,15 @@ dracoLoader.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5
 loader.setDRACOLoader(dracoLoader);
 
 function loadCaveModel(url, displayName) {
-  modelName = `Loading ${displayName}...`;
+  modelName = `Loading ${displayName}... (0%)`;
   updateStatusHUD();
 
+  const safeUrl = (url.startsWith('blob:') || url.startsWith('http')) 
+    ? url 
+    : encodeURI(url.startsWith('./') ? url : './' + url);
+
   loader.load(
-    url,
+    safeUrl,
     (gltf) => {
       if (currentCaveMesh) scene.remove(currentCaveMesh);
       currentCaveMesh = gltf.scene;
@@ -495,29 +499,38 @@ function loadCaveModel(url, displayName) {
 
       // Adjust grid size to cave footprint
       gridHelper.position.y = 0;
-      gridHelper.scale.set(caveBounds.x * 0.04, 1, caveBounds.z * 0.04);
+      gridHelper.scale.set(Math.max(1, caveBounds.x * 0.04), 1, Math.max(1, caveBounds.z * 0.04));
 
       // Set initial player spawn
       playerPos.set(0, Math.max(1.5, caveBounds.y * 0.3), 0);
 
       modelName = `${displayName} (${Math.round(caveBounds.x)}m × ${Math.round(caveBounds.y)}m × ${Math.round(caveBounds.z)}m)`;
       
-      // Start in Orbit mode so model is visible immediately
       setCameraMode('orbit');
       frameModel();
       updateStatusHUD();
     },
-    undefined,
+    (xhr) => {
+      if (xhr.lengthComputable) {
+        const percent = Math.round((xhr.loaded / xhr.total) * 100);
+        modelName = `Downloading ${displayName}... (${percent}%)`;
+        updateStatusHUD();
+      }
+    },
     (err) => {
-      console.warn('GLB Load failed:', err);
-      modelName = `Select .GLB file with top-right button`;
+      console.error('GLB Load failed:', err);
+      modelName = `⚠️ Could not find "${displayName}" in repo`;
       updateStatusHUD();
     }
   );
 }
 
-// Auto-load default file
-loadCaveModel('Buzzard Cave 2.0.glb', 'Buzzard Cave 2.0.glb');
+// -------------------------------------------------------------
+// EXACT FILENAME MATCHING YOUR GITHUB REPO
+// -------------------------------------------------------------
+const DEFAULT_MODEL = 'BuzzardCaveA-v1.glb';
+
+loadCaveModel(DEFAULT_MODEL, DEFAULT_MODEL);
 
 // --- Animation Loop ---
 const clock = new THREE.Clock();
