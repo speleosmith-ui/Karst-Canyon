@@ -398,6 +398,7 @@ let eyeHeight = 1.60;
 let baseMoveSpeed = 8.5; 
 let currentScaledSpeed = 8.5;
 let stepCycle = 0;
+let lastKnownFloorY = null;
 
 const groundRaycaster = new THREE.Raycaster();
 const downVector = new THREE.Vector3(0, -1, 0);
@@ -464,7 +465,25 @@ function recalcSpeed() {
   updateStatusHUD();
 }
 
+// Find current floor directly beneath coordinates
+function findFloorBeneath(pos) {
+  if (!currentCaveMesh) return null;
+  const ray = new THREE.Raycaster();
+  // Cast from 0.5m above current position or head height downwards 15 meters
+  ray.set(new THREE.Vector3(pos.x, pos.y + 0.5, pos.z), downVector);
+  ray.far = 15.0;
+  const hits = ray.intersectObject(currentCaveMesh, true);
+  for (let i = 0; i < hits.length; i++) {
+    const h = hits[i];
+    if (h.point.y <= (pos.y + 0.3) && (!h.face || h.face.normal.y > 0.3)) {
+      return h.point.y;
+    }
+  }
+  return null;
+}
+
 function updateHeightAndSpeed(val) {
+  const oldHeight = eyeHeight;
   eyeHeight = parseFloat(val);
   sldHeight.value = eyeHeight.toFixed(2);
 
@@ -477,6 +496,15 @@ function updateHeightAndSpeed(val) {
   btnPresetCrouch.classList.toggle('active', Math.abs(eyeHeight - 0.8) < 0.05);
   btnPresetCrawl.classList.toggle('active', Math.abs(eyeHeight - 0.2) < 0.05);
   btnPresetMicro.classList.toggle('active', eyeHeight <= 0.02);
+
+  // Instantly recalculate Y so camera drops down directly to the floor!
+  if (activeCameraMode === 'walk') {
+    const currentFloor = findFloorBeneath(playerPos) || (lastKnownFloorY !== null ? lastKnownFloorY : (playerPos.y - oldHeight));
+    if (currentFloor !== null) {
+      playerPos.y = currentFloor + eyeHeight;
+      lastKnownFloorY = currentFloor;
+    }
+  }
 
   recalcSpeed();
 }
@@ -529,6 +557,12 @@ btnEnterFPS.addEventListener('click', () => {
   yaw = 0;
   pitch = 0;
   setCameraMode('walk');
+  // Immediately snap to floor at spawn
+  const fl = findFloorBeneath(playerPos);
+  if (fl !== null) {
+    playerPos.y = fl + eyeHeight;
+    lastKnownFloorY = fl;
+  }
 });
 
 btnExitFPS.addEventListener('click', () => setCameraMode('orbit'));
@@ -846,21 +880,23 @@ function loadCaveModel(url, displayName) {
 const DEFAULT_MODEL = 'BuzzardCaveA-v1.glb';
 loadCaveModel(DEFAULT_MODEL, DEFAULT_MODEL);
 
-// --- Stable Ground Surface Raycaster ---
+// --- Adaptive Floor Raycaster ---
 function snapToMeshFloor(deltaTime) {
   if (!currentCaveMesh) return null;
 
+  // Ray origin is set 0.4m above the current player position (or 0.2m when crawling)
   const rayOrigin = playerPos.clone();
-  rayOrigin.y += Math.min(0.25, Math.max(0.04, eyeHeight * 0.4)); 
+  rayOrigin.y += Math.max(0.15, Math.min(0.4, eyeHeight * 0.5)); 
   groundRaycaster.set(rayOrigin, downVector);
-  groundRaycaster.far = Math.max(1.5, eyeHeight + 1.2);
+  groundRaycaster.far = Math.max(3.0, eyeHeight + 2.5);
 
   const hits = groundRaycaster.intersectObject(currentCaveMesh, true);
   if (hits.length > 0) {
     let validHit = null;
     for (let i = 0; i < hits.length; i++) {
       const h = hits[i];
-      if (h.point.y <= (playerPos.y + 0.3) && (!h.face || h.face.normal.y > 0.4)) {
+      // Only accept upward-facing floor surfaces (reject inverted ceilings)
+      if (h.point.y <= (playerPos.y + 0.3) && (!h.face || h.face.normal.y > 0.25)) {
         validHit = h;
         break;
       }
@@ -871,14 +907,16 @@ function snapToMeshFloor(deltaTime) {
       const diffY = targetY - playerPos.y;
 
       if (diffY > 0 && diffY <= 0.6) {
-        playerPos.y = targetY; 
+        playerPos.y = targetY; // Snappy climb on rocks/slopes
       } else if (diffY <= 0) {
-        playerPos.y = THREE.MathUtils.lerp(playerPos.y, targetY, Math.min(1.0, 18.0 * deltaTime));
+        // Fast descent to hug floor continuously
+        playerPos.y = THREE.MathUtils.lerp(playerPos.y, targetY, Math.min(1.0, 22.0 * deltaTime));
       }
+      lastKnownFloorY = validHit.point.y;
       return validHit.point.y;
     }
   }
-  return null;
+  return lastKnownFloorY;
 }
 
 // Animation Loop
@@ -950,18 +988,18 @@ function animate() {
 
     if (isMoving && (activeCameraMode === 'walk' || activeCameraMode === 'fly')) {
       if (isCrawling) {
-        const maxBob = Math.min(0.03, eyeHeight * 0.2);
+        const maxBob = Math.min(0.025, eyeHeight * 0.2);
         bobY = Math.sin(stepCycle) * maxBob;
-        bobX = Math.cos(stepCycle * 0.5) * Math.min(0.018, eyeHeight * 0.15);
-        bobRoll = Math.cos(stepCycle * 0.5) * 0.012;
+        bobX = Math.cos(stepCycle * 0.5) * Math.min(0.015, eyeHeight * 0.12);
+        bobRoll = Math.cos(stepCycle * 0.5) * 0.01;
       } else {
-        bobY = Math.abs(Math.sin(stepCycle)) * 0.05;
-        bobX = Math.cos(stepCycle * 0.5) * 0.02;
+        bobY = Math.abs(Math.sin(stepCycle)) * 0.045;
+        bobX = Math.cos(stepCycle * 0.5) * 0.018;
         bobRoll = Math.cos(stepCycle * 0.5) * 0.01;
       }
     } else {
       const idleTime = clock.getElapsedTime();
-      bobY = Math.sin(idleTime * (isCrawling ? 2.4 : 1.4)) * (isCrawling ? 0.006 : 0.003);
+      bobY = Math.sin(idleTime * (isCrawling ? 2.4 : 1.4)) * (isCrawling ? 0.004 : 0.002);
     }
 
     const rightHorizontal = new THREE.Vector3(Math.cos(yaw), 0, Math.sin(yaw)).normalize();
@@ -970,7 +1008,7 @@ function animate() {
     camera.position.addScaledVector(rightHorizontal, bobX);
 
     if (floorHitY !== null) {
-      const minCamY = floorHitY + Math.max(0.002, eyeHeight * 0.8);
+      const minCamY = floorHitY + Math.max(0.002, eyeHeight * 0.85);
       if (camera.position.y < minCamY) camera.position.y = minCamY;
     }
 
