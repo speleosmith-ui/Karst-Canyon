@@ -18,7 +18,7 @@ body, html {
   touch-action: none;
 }
 
-/* --- Caver Vignette Overlay --- */
+/* --- Caver Vignette & Slime Splatter Overlays --- */
 #vignette {
   position: absolute;
   top: 0;
@@ -28,6 +28,24 @@ body, html {
   pointer-events: none;
   z-index: 5;
   background: radial-gradient(circle at center, rgba(0,0,0,0) 55%, rgba(0,0,0,0.65) 90%, rgba(0,0,0,0.92) 100%);
+}
+#slime-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 6;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  background: 
+    radial-gradient(circle at 45% 45%, rgba(140, 200, 30, 0.85) 0%, rgba(80, 140, 10, 0.7) 12%, transparent 25%),
+    radial-gradient(circle at 65% 35%, rgba(160, 220, 40, 0.9) 0%, rgba(90, 150, 20, 0.6) 8%, transparent 18%),
+    radial-gradient(circle at 30% 60%, rgba(130, 180, 30, 0.75) 0%, transparent 15%),
+    radial-gradient(circle at 70% 70%, rgba(110, 160, 20, 0.8) 0%, transparent 20%),
+    radial-gradient(circle at 50% 50%, rgba(100, 150, 20, 0.35) 0%, transparent 70%);
+  filter: blur(2px) contrast(140%);
 }
 
 /* --- Collapsible Control Panel --- */
@@ -119,6 +137,20 @@ body, html {
   cursor: pointer;
   text-align: center;
   font-size: 12px;
+}
+.danger-btn {
+  background: #dc3545;
+  border: 1px solid #ff6b7b;
+  color: white;
+  font-weight: bold;
+  padding: 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  text-align: center;
+  font-size: 11px;
+}
+.danger-btn:hover {
+  background: #bd2130;
 }
 .primary-btn {
   background: #007acc;
@@ -255,6 +287,7 @@ body, html {
 <body>
 
 <div id="vignette"></div>
+<div id="slime-overlay"></div>
 <input type="file" id="file-input" accept=".glb,.gltf">
 
 <button id="btn-toggle-menu">⚙️ Menu</button>
@@ -265,6 +298,14 @@ body, html {
 <div id="control-panel">
   <button id="btn-enter-fps" class="primary-btn">🎮 Enter Cave (Walk Mode)</button>
   <button id="btn-load-file" class="action-btn">📂 Open Another GLB</button>
+
+  <div class="control-group">
+    <label>Cave Vulture Encounter</label>
+    <div class="btn-group">
+      <button id="btn-toggle-vulture" class="toggle-btn active">🦅 Vulture: ON</button>
+      <button id="btn-tp-vulture" class="danger-btn">🎯 Teleport to Nest</button>
+    </div>
+  </div>
 
   <div class="control-group">
     <label>Navigation Mode</label>
@@ -287,7 +328,7 @@ body, html {
   </div>
 
   <div class="control-group">
-    <label>Crawl Audio</label>
+    <label>Audio</label>
     <div class="btn-group">
       <button id="btn-toggle-audio" class="toggle-btn active">🔊 Audio: ON</button>
     </div>
@@ -366,7 +407,7 @@ controls.minDistance = 0.05;
 const gridHelper = new THREE.GridHelper(100, 50, 0x00baee, 0x1f242d);
 scene.add(gridHelper);
 
-// Low ambient light for authentic darkness
+// Lighting
 const ambientLight = new THREE.AmbientLight(0xffffff, 0.15);
 scene.add(ambientLight);
 
@@ -374,7 +415,7 @@ const hemiLight = new THREE.HemisphereLight(0x88aacc, 0x111111, 0.1);
 hemiLight.position.set(0, 100, 0);
 scene.add(hemiLight);
 
-// --- Caver's Dual-Beam Headlamp ---
+// Headlamp setup
 const spotCenter = new THREE.SpotLight(0xfff3e0, 25, 120, Math.PI / 6, 0.4, 1.2);
 scene.add(spotCenter);
 scene.add(spotCenter.target);
@@ -386,7 +427,119 @@ scene.add(spotSpill.target);
 const proximityLight = new THREE.PointLight(0xffeacc, 0.8, 4, 1.5);
 scene.add(proximityLight);
 
-// --- Procedural Crawling & Heavy Breathing Audio (Web Audio API) ---
+// --- Procedural 3D Turkey Vulture ---
+let isVultureEnabled = true;
+const vultureGroup = new THREE.Group();
+const vultureSpawnPos = new THREE.Vector3(0, 1, -15);
+let vultureLeftWing = null;
+let vultureRightWing = null;
+let vultureHead = null;
+let vultureState = 'dormant'; // 'dormant', 'attacking', 'recovering'
+let vultureAttackTimer = 0;
+let vomitParticles = [];
+
+function buildVultureModel() {
+  const bodyMat = new THREE.MeshStandardMaterial({ color: 0x1e1e24, roughness: 0.9 });
+  const skinMat = new THREE.MeshStandardMaterial({ color: 0xaa2222, roughness: 0.6 });
+  const beakMat = new THREE.MeshStandardMaterial({ color: 0xddaa33, roughness: 0.4 });
+  const eyeMat = new THREE.MeshBasicMaterial({ color: 0xff3300 });
+
+  // Body
+  const body = new THREE.Mesh(new THREE.SphereGeometry(0.35, 12, 12), bodyMat);
+  body.scale.set(0.85, 1.2, 0.9);
+  vultureGroup.add(body);
+
+  // Neck & Head
+  const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.14, 0.35, 8), skinMat);
+  neck.position.set(0, 0.45, 0.15);
+  neck.rotation.x = Math.PI / 6;
+  vultureGroup.add(neck);
+
+  vultureHead = new THREE.Group();
+  vultureHead.position.set(0, 0.68, 0.28);
+
+  const headMesh = new THREE.Mesh(new THREE.SphereGeometry(0.16, 10, 10), skinMat);
+  vultureHead.add(headMesh);
+
+  // Hooked Beak
+  const beak = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.24, 6), beakMat);
+  beak.position.set(0, -0.04, 0.18);
+  beak.rotation.x = Math.PI / 2.2;
+  vultureHead.add(beak);
+
+  // Eyes (Reflect light in the dark)
+  const leftEye = new THREE.Mesh(new THREE.SphereGeometry(0.035, 6, 6), eyeMat);
+  leftEye.position.set(0.1, 0.05, 0.1);
+  const rightEye = leftEye.clone();
+  rightEye.position.x = -0.1;
+  vultureHead.add(leftEye);
+  vultureHead.add(rightEye);
+
+  vultureGroup.add(vultureHead);
+
+  // Left Wing (Hinged for flapping)
+  vultureLeftWing = new THREE.Group();
+  vultureLeftWing.position.set(0.28, 0.2, 0);
+  const lWingMesh = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.06, 0.45), bodyMat);
+  lWingMesh.position.set(0.35, 0, 0);
+  vultureLeftWing.add(lWingMesh);
+  vultureGroup.add(vultureLeftWing);
+
+  // Right Wing
+  vultureRightWing = new THREE.Group();
+  vultureRightWing.position.set(-0.28, 0.2, 0);
+  const rWingMesh = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.06, 0.45), bodyMat);
+  rWingMesh.position.set(-0.35, 0, 0);
+  vultureRightWing.add(rWingMesh);
+  vultureGroup.add(vultureRightWing);
+
+  // Perch / Nest Rocks
+  const nestMat = new THREE.MeshStandardMaterial({ color: 0x332822, roughness: 0.95 });
+  for (let i = 0; i < 6; i++) {
+    const rock = new THREE.Mesh(new THREE.DodecahedronGeometry(0.2 + Math.random()*0.15), nestMat);
+    rock.position.set((Math.random()-0.5)*0.8, -0.3, (Math.random()-0.5)*0.8);
+    vultureGroup.add(rock);
+  }
+
+  vultureGroup.position.copy(vultureSpawnPos);
+  scene.add(vultureGroup);
+}
+
+buildVultureModel();
+
+// Projectile Vomit System
+const vomitGeo = new THREE.SphereGeometry(0.035, 6, 6);
+const vomitMat = new THREE.MeshStandardMaterial({ color: 0x88cc11, roughness: 0.2, emissive: 0x335500 });
+
+function spawnVomitBurst() {
+  playVomitSound();
+  const beakWorld = new THREE.Vector3();
+  vultureHead.getWorldPosition(beakWorld);
+  beakWorld.y -= 0.05;
+
+  const targetDir = playerPos.clone().sub(beakWorld).normalize();
+
+  for (let i = 0; i < 22; i++) {
+    const p = new THREE.Mesh(vomitGeo, vomitMat);
+    p.position.copy(beakWorld);
+    const spread = new THREE.Vector3(
+      (Math.random() - 0.5) * 0.35,
+      (Math.random() - 0.5) * 0.35 + 0.15,
+      (Math.random() - 0.5) * 0.35
+    );
+    const vel = targetDir.clone().multiplyScalar(7.5 + Math.random() * 3.5).add(spread);
+    vomitParticles.push({ mesh: p, velocity: vel, life: 1.8 });
+    scene.add(p);
+  }
+}
+
+function triggerSlimeSplatter() {
+  const overlay = document.getElementById('slime-overlay');
+  overlay.style.opacity = '1';
+  setTimeout(() => { overlay.style.opacity = '0'; }, 3500);
+}
+
+// --- Procedural Audio Engine (Web Audio API) ---
 let audioCtx = null;
 let masterGain = null;
 let isAudioEnabled = true;
@@ -394,7 +547,7 @@ let isAudioInitialized = false;
 
 let stepTimer = 0;
 let stepCycle = 0;
-let breathState = 'inhale'; // 'inhale', 'exhale'
+let breathState = 'inhale';
 let breathTimer = 0;
 
 function initCaveAudio() {
@@ -411,31 +564,75 @@ function initCaveAudio() {
   }
 }
 
-// Crawling Friction / Glove & Knee Scrape on Rock
-function playCrawlScrapeSound() {
+// Vulture Screech / Harsh Defensive Hiss
+function playVultureShriek() {
   if (!isAudioEnabled || !audioCtx || audioCtx.state !== 'running') return;
-
   const now = audioCtx.currentTime;
-  const dur = 0.24;
+
+  // Harsh shrieking oscillator
+  const osc = audioCtx.createOscillator();
+  const oscGain = audioCtx.createGain();
+  osc.type = 'sawtooth';
+  osc.frequency.setValueAtTime(950, now);
+  osc.frequency.linearRampToValueAtTime(1400, now + 0.25);
+  osc.frequency.exponentialRampToValueAtTime(350, now + 0.9);
+
+  oscGain.gain.setValueAtTime(0.28, now);
+  oscGain.gain.exponentialRampToValueAtTime(0.001, now + 0.9);
+
+  // Hissing noise burst
+  const dur = 0.85;
   const bufferSize = Math.floor(audioCtx.sampleRate * dur);
   const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
   const data = buffer.getChannelData(0);
+  for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
 
+  const noise = audioCtx.createBufferSource();
+  noise.buffer = buffer;
+  const filter = audioCtx.createBiquadFilter();
+  filter.type = 'bandpass';
+  filter.frequency.setValueAtTime(1800, now);
+  filter.Q.value = 3.0;
+
+  const noiseGain = audioCtx.createGain();
+  noiseGain.gain.setValueAtTime(0.35, now);
+  noiseGain.gain.exponentialRampToValueAtTime(0.001, now + dur);
+
+  osc.connect(oscGain);
+  oscGain.connect(masterGain);
+  noise.connect(filter);
+  filter.connect(noiseGain);
+  noiseGain.connect(masterGain);
+
+  osc.start(now);
+  osc.stop(now + 0.9);
+  noise.start(now);
+}
+
+// Wet Projectile Vomiting & Splatter Audio
+function playVomitSound() {
+  if (!isAudioEnabled || !audioCtx || audioCtx.state !== 'running') return;
+  const now = audioCtx.currentTime;
+
+  const dur = 0.6;
+  const bufferSize = Math.floor(audioCtx.sampleRate * dur);
+  const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+  const data = buffer.getChannelData(0);
   for (let i = 0; i < bufferSize; i++) {
-    data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (bufferSize * 0.4));
+    data[i] = (Math.random() * 2 - 1) * Math.sin(i * 0.05);
   }
 
   const noise = audioCtx.createBufferSource();
   noise.buffer = buffer;
 
   const filter = audioCtx.createBiquadFilter();
-  filter.type = 'bandpass';
-  filter.frequency.setValueAtTime(650 + Math.random() * 350, now);
-  filter.Q.setValueAtTime(2.2, now);
+  filter.type = 'lowpass';
+  filter.frequency.setValueAtTime(450, now);
+  filter.frequency.linearRampToValueAtTime(800, now + 0.15);
+  filter.frequency.exponentialRampToValueAtTime(150, now + dur);
 
   const gain = audioCtx.createGain();
-  const vol = 0.28 + Math.random() * 0.12;
-  gain.gain.setValueAtTime(vol, now);
+  gain.gain.setValueAtTime(0.4, now);
   gain.gain.exponentialRampToValueAtTime(0.001, now + dur);
 
   noise.connect(filter);
@@ -445,10 +642,35 @@ function playCrawlScrapeSound() {
   noise.start(now);
 }
 
-// Procedural Heavy / Labored Breathing Sound
+// Crawling Scraping & Labored Breathing
+function playCrawlScrapeSound() {
+  if (!isAudioEnabled || !audioCtx || audioCtx.state !== 'running') return;
+  const now = audioCtx.currentTime;
+  const dur = 0.24;
+  const bufferSize = Math.floor(audioCtx.sampleRate * dur);
+  const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+  const data = buffer.getChannelData(0);
+  for (let i = 0; i < bufferSize; i++) data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (bufferSize * 0.4));
+
+  const noise = audioCtx.createBufferSource();
+  noise.buffer = buffer;
+  const filter = audioCtx.createBiquadFilter();
+  filter.type = 'bandpass';
+  filter.frequency.setValueAtTime(650 + Math.random() * 350, now);
+  filter.Q.setValueAtTime(2.2, now);
+
+  const gain = audioCtx.createGain();
+  gain.gain.setValueAtTime(0.28 + Math.random() * 0.12, now);
+  gain.gain.exponentialRampToValueAtTime(0.001, now + dur);
+
+  noise.connect(filter);
+  filter.connect(gain);
+  gain.connect(masterGain);
+  noise.start(now);
+}
+
 function playHeavyBreath(isInhale) {
   if (!isAudioEnabled || !audioCtx || audioCtx.state !== 'running') return;
-
   const now = audioCtx.currentTime;
   const dur = isInhale ? 1.15 : 1.35;
   const bufferSize = Math.floor(audioCtx.sampleRate * dur);
@@ -466,7 +688,6 @@ function playHeavyBreath(isInhale) {
 
   const noise = audioCtx.createBufferSource();
   noise.buffer = buffer;
-
   const filter = audioCtx.createBiquadFilter();
   filter.type = 'bandpass';
   filter.frequency.setValueAtTime(isInhale ? 420 : 360, now);
@@ -489,7 +710,6 @@ function playHeavyBreath(isInhale) {
   noise.connect(filter);
   filter.connect(gain);
   gain.connect(masterGain);
-
   noise.start(now);
 }
 
@@ -528,6 +748,9 @@ const btnModeOrbit = document.getElementById('btn-mode-orbit');
 const btnModeWalk = document.getElementById('btn-mode-walk');
 const btnModeFly = document.getElementById('btn-mode-fly');
 
+const btnToggleVulture = document.getElementById('btn-toggle-vulture');
+const btnTpVulture = document.getElementById('btn-tp-vulture');
+
 const sldHeight = document.getElementById('sld-height');
 const lblHeight = document.getElementById('lbl-height');
 const btnPresetStand = document.getElementById('btn-preset-stand');
@@ -557,6 +780,22 @@ if (window.innerWidth < 768) {
 btnToggleMenu.addEventListener('click', () => controlPanel.classList.toggle('hidden'));
 controlPanel.addEventListener('click', (e) => e.stopPropagation());
 
+// Vulture Toggle & Teleport
+btnToggleVulture.addEventListener('click', () => {
+  isVultureEnabled = !isVultureEnabled;
+  vultureGroup.visible = isVultureEnabled;
+  btnToggleVulture.innerText = `🦅 Vulture: ${isVultureEnabled ? 'ON' : 'OFF'}`;
+  btnToggleVulture.classList.toggle('active', isVultureEnabled);
+});
+
+btnTpVulture.addEventListener('click', () => {
+  // Teleport right in front of the nest to test
+  playerPos.copy(vultureSpawnPos).add(new THREE.Vector3(0, eyeHeight, 4.0));
+  yaw = Math.PI; // Face the vulture
+  pitch = 0;
+  setCameraMode('walk');
+});
+
 // Audio Listeners
 btnToggleAudio.addEventListener('click', () => {
   initCaveAudio();
@@ -571,7 +810,7 @@ sldVolume.addEventListener('input', (e) => {
   if (masterGain && isAudioEnabled) masterGain.gain.value = parseFloat(e.target.value);
 });
 
-// Height & Dynamic Speed
+// Height & Speed
 function updateHeightAndSpeed(val) {
   eyeHeight = parseFloat(val);
   sldHeight.value = eyeHeight.toFixed(2);
@@ -598,7 +837,7 @@ btnPresetCrouch.addEventListener('click', () => updateHeightAndSpeed(0.80));
 btnPresetCrawl.addEventListener('click', () => updateHeightAndSpeed(0.20));
 btnPresetMicro.addEventListener('click', () => updateHeightAndSpeed(0.01));
 
-// Mode Switcher
+// Camera Mode Switcher
 function setCameraMode(mode) {
   initCaveAudio();
   if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
@@ -623,7 +862,7 @@ function setCameraMode(mode) {
       btnExitFPS.style.display = 'block';
       controlPanel.classList.add('hidden');
       helpToast.innerHTML = mode === 'walk' 
-        ? '🚶 <b>Walk Mode:</b> Follows floor | Headlamp on'
+        ? '🚶 <b>Walk Mode:</b> Floor hugging active | Watch for wildlife!'
         : '✈️ <b>Fly Mode:</b> Move in sight line';
     } else {
       helpToast.innerHTML = mode === 'walk'
@@ -752,7 +991,6 @@ function updateJoystick(clientX, clientY) {
 // Mobile Fly Buttons
 const btnTouchUp = document.getElementById('btn-touch-up');
 const btnTouchDown = document.getElementById('btn-touch-down');
-
 btnTouchUp.addEventListener('touchstart', (e) => { e.preventDefault(); moveState.moveUp = true; });
 btnTouchUp.addEventListener('touchend', () => { moveState.moveUp = false; });
 btnTouchDown.addEventListener('touchstart', (e) => { e.preventDefault(); moveState.moveDown = true; });
@@ -923,6 +1161,10 @@ function loadCaveModel(url, displayName) {
       applyMaterialStyle();
       scene.add(currentCaveMesh);
 
+      // Position Vulture at the deep end of the cave
+      vultureSpawnPos.set(caveBounds.x * 0.25, 0.8, -caveBounds.z * 0.42);
+      vultureGroup.position.copy(vultureSpawnPos);
+
       gridHelper.position.y = 0;
       gridHelper.scale.set(Math.max(1, caveBounds.x * 0.04), 1, Math.max(1, caveBounds.z * 0.04));
 
@@ -1031,7 +1273,7 @@ function animate() {
 
       stepCycle += deltaTime * (isCrawling ? 7.0 : 10.0);
 
-      // Play crawling scrape sound only when low (<1.0m) and moving
+      // Crawling scrape sound
       if (isCrawling) {
         stepTimer += deltaTime;
         const crawlInterval = Math.max(0.28, 0.45 / Math.max(0.4, currentScaledSpeed));
@@ -1045,7 +1287,7 @@ function animate() {
     // Heavy Labored Breathing while in Crawling stance (<1.0m)
     if (isCrawling && isAudioEnabled) {
       breathTimer += deltaTime;
-      const breathInterval = isMoving ? 1.45 : 2.2; // Quicker breathing while moving
+      const breathInterval = isMoving ? 1.45 : 2.2;
       if (breathTimer >= breathInterval) {
         breathTimer = 0;
         playHeavyBreath(breathState === 'inhale');
@@ -1058,6 +1300,74 @@ function animate() {
     } else {
       if (moveState.moveUp) playerPos.y += currentScaledSpeed * speedMultiplier * deltaTime;
       if (moveState.moveDown) playerPos.y -= currentScaledSpeed * speedMultiplier * deltaTime;
+    }
+
+    // --- Vulture Behavior & Animation ---
+    if (isVultureEnabled && vultureGroup) {
+      const distToVulture = playerPos.distanceTo(vultureGroup.position);
+      
+      // Face player
+      const dirToPlayer = playerPos.clone().sub(vultureGroup.position);
+      dirToPlayer.y = 0;
+      if (dirToPlayer.lengthSq() > 0.01) {
+        const targetRotY = Math.atan2(dirToPlayer.x, dirToPlayer.z);
+        vultureGroup.rotation.y = THREE.MathUtils.lerp(vultureGroup.rotation.y, targetRotY, 5.0 * deltaTime);
+      }
+
+      if (vultureState === 'dormant') {
+        // Idle breathing / slight hunch
+        vultureHead.rotation.x = Math.sin(clock.getElapsedTime() * 1.5) * 0.08;
+        vultureLeftWing.rotation.z = Math.sin(clock.getElapsedTime() * 1.5) * 0.03;
+        vultureRightWing.rotation.z = -Math.sin(clock.getElapsedTime() * 1.5) * 0.03;
+
+        // Trigger encounter when within 5 meters
+        if (distToVulture < 5.2 && distToVulture > 0.5) {
+          vultureState = 'attacking';
+          vultureAttackTimer = 0;
+          playVultureShriek();
+          spawnVomitBurst();
+        }
+      } else if (vultureState === 'attacking') {
+        vultureAttackTimer += deltaTime;
+
+        // Rapid flapping wings & lunge head
+        const flap = Math.sin(vultureAttackTimer * 28.0) * 0.85;
+        vultureLeftWing.rotation.z = Math.max(0, flap);
+        vultureRightWing.rotation.z = -Math.max(0, flap);
+        vultureHead.position.z = 0.28 + Math.sin(vultureAttackTimer * 14.0) * 0.12;
+
+        if (vultureAttackTimer > 3.0) {
+          vultureState = 'recovering';
+        }
+      } else if (vultureState === 'recovering') {
+        // Fold wings back down
+        vultureLeftWing.rotation.z = THREE.MathUtils.lerp(vultureLeftWing.rotation.z, 0, 4.0 * deltaTime);
+        vultureRightWing.rotation.z = THREE.MathUtils.lerp(vultureRightWing.rotation.z, 0, 4.0 * deltaTime);
+        if (distToVulture > 8.0) {
+          vultureState = 'dormant';
+        }
+      }
+    }
+
+    // --- Update Vomit Particles Physics ---
+    for (let i = vomitParticles.length - 1; i >= 0; i--) {
+      const vp = vomitParticles[i];
+      vp.velocity.y -= 9.8 * deltaTime; // Gravity
+      vp.mesh.position.addScaledVector(vp.velocity, deltaTime);
+      vp.life -= deltaTime;
+
+      // Check hit with player camera
+      if (vp.mesh.position.distanceTo(camera.position) < 0.65) {
+        triggerSlimeSplatter();
+        scene.remove(vp.mesh);
+        vomitParticles.splice(i, 1);
+        continue;
+      }
+
+      if (vp.life <= 0 || vp.mesh.position.y < 0) {
+        scene.remove(vp.mesh);
+        vomitParticles.splice(i, 1);
+      }
     }
 
     // Natural crawl sway / head bobbing
