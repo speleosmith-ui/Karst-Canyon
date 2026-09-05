@@ -381,8 +381,8 @@ body, html {
   </div>
 
   <div class="control-group">
-    <label id="lbl-speed">Base Move Speed: 0.50 m/s</label>
-    <input type="range" id="sld-speed" class="slider" min="0.0" max="10.0" step="0.1" value="0.50">
+    <label id="lbl-speed">Base Move Speed: 2.0 m/s</label>
+    <input type="range" id="sld-speed" class="slider" min="0.1" max="50.0" step="0.2" value="2.0">
   </div>
 
   <div class="control-group">
@@ -447,21 +447,25 @@ const REPO_CAVES = [
   {
     title: "Buzzard Cave (v1)",
     filename: "BuzzardCaveA-v1.glb",
+    spawnType: "coords",
     spawn: new THREE.Vector3(5.1, 8.0, -1.3)
   },
   {
     title: "Whirlpool Cave (v1.1)",
     filename: "Whirlpool1.1.glb",
-    spawn: new THREE.Vector3(0, 5.0, 0)
+    spawnType: "highest", // Spawns at the highest peak of the cave mesh!
+    spawn: new THREE.Vector3(0, 0, 0)
   }
 ];
+
+let activeCaveConfig = REPO_CAVES[0];
 let activeSpawnPos = new THREE.Vector3().copy(REPO_CAVES[0].spawn);
 
 // --- Scene Setup ---
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x05070a);
 
-const camera = new THREE.PerspectiveCamera(65, window.innerWidth / window.innerHeight, 0.002, 10000);
+const camera = new THREE.PerspectiveCamera(65, window.innerWidth / window.innerHeight, 0.002, 20000);
 camera.position.set(0, 30, 50);
 
 const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: 'high-performance' });
@@ -476,7 +480,7 @@ document.body.appendChild(renderer.domElement);
 const controls = new THREE.OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
 controls.dampingFactor = 0.08;
-controls.maxDistance = 1000;
+controls.maxDistance = 5000;
 controls.minDistance = 0.05;
 
 // Grid Floor
@@ -492,15 +496,15 @@ hemiLight.position.set(0, 100, 0);
 scene.add(hemiLight);
 
 // Headlamp Setup
-const spotCenter = new THREE.SpotLight(0xfff3e0, 10.0, 120, Math.PI / 6, 0.4, 1.2);
+const spotCenter = new THREE.SpotLight(0xfff3e0, 10.0, 300, Math.PI / 6, 0.4, 1.2);
 scene.add(spotCenter);
 scene.add(spotCenter.target);
 
-const spotSpill = new THREE.SpotLight(0xffeedd, 3.5, 45, Math.PI / 2.3, 0.9, 1.8);
+const spotSpill = new THREE.SpotLight(0xffeedd, 3.5, 120, Math.PI / 2.3, 0.9, 1.8);
 scene.add(spotSpill);
 scene.add(spotSpill.target);
 
-const proximityLight = new THREE.PointLight(0xffeacc, 0.4, 4, 1.5);
+const proximityLight = new THREE.PointLight(0xffeacc, 0.4, 10, 1.5);
 scene.add(proximityLight);
 
 // State Variables
@@ -512,8 +516,8 @@ let activeCameraMode = 'orbit';
 let isPointerLocked = false;
 
 let eyeHeight = 1.60; 
-let baseMoveSpeed = 0.50; 
-let currentScaledSpeed = 0.50;
+let baseMoveSpeed = 2.0; 
+let currentScaledSpeed = 2.0;
 let stepCycle = 0;
 let lastKnownFloorY = null;
 
@@ -585,7 +589,7 @@ function buildCaveMenu() {
       <span class="cave-item-file">${cave.filename}</span>
     `;
     btn.addEventListener('click', () => {
-      activeSpawnPos.copy(cave.spawn);
+      activeCaveConfig = cave;
       loadCaveModel(cave.filename, cave.title);
       caveModal.classList.add('hidden');
     });
@@ -605,29 +609,48 @@ btnUploadCustom.addEventListener('click', () => {
   fileInput.click();
 });
 
-// Speed Slider
+// Speed Calculation
 sldSpeed.addEventListener('input', (e) => {
   baseMoveSpeed = parseFloat(e.target.value);
-  lblSpeed.innerText = `Base Move Speed: ${baseMoveSpeed.toFixed(2)} m/s`;
+  lblSpeed.innerText = `Base Move Speed: ${baseMoveSpeed.toFixed(1)} m/s`;
   recalcSpeed();
 });
 
 function recalcSpeed() {
   const ratio = Math.max(0.01, eyeHeight / 1.6);
-  currentScaledSpeed = baseMoveSpeed * (0.2 + 0.8 * ratio);
+  currentScaledSpeed = baseMoveSpeed * (0.3 + 0.7 * ratio);
   updateStatusHUD();
 }
 
-// Find current floor directly beneath coordinates
+// Find Highest Mesh Point for Spawning
+function findHighestMeshPoint(mesh) {
+  let highest = new THREE.Vector3(0, -Infinity, 0);
+  const tempV = new THREE.Vector3();
+  mesh.traverse((child) => {
+    if (child.isMesh && child.geometry && child.geometry.attributes.position) {
+      const pos = child.geometry.attributes.position;
+      for (let i = 0; i < pos.count; i++) {
+        tempV.fromBufferAttribute(pos, i);
+        child.localToWorld(tempV);
+        if (tempV.y > highest.y) {
+          highest.copy(tempV);
+        }
+      }
+    }
+  });
+  return highest.y === -Infinity ? new THREE.Vector3(0, 5, 0) : highest;
+}
+
+// Find Floor Raycaster
 function findFloorBeneath(pos) {
   if (!currentCaveMesh) return null;
   const ray = new THREE.Raycaster();
-  ray.set(new THREE.Vector3(pos.x, pos.y + 0.5, pos.z), downVector);
-  ray.far = 15.0;
+  ray.set(new THREE.Vector3(pos.x, pos.y + 1.0, pos.z), downVector);
+  ray.far = 100.0;
   const hits = ray.intersectObject(currentCaveMesh, true);
   for (let i = 0; i < hits.length; i++) {
     const h = hits[i];
-    if (h.point.y <= (pos.y + 0.3) && (!h.face || h.face.normal.y > 0.3)) {
+    if (h.point.y <= (pos.y + 0.5) && (!h.face || h.face.normal.y > 0.2)) {
       return h.point.y;
     }
   }
@@ -933,7 +956,7 @@ function updateStatusHUD() {
   const modeLabel = activeCameraMode === 'orbit' ? 'ORBIT' : (activeCameraMode === 'walk' ? `WALK [H:${heightStr}]` : 'FLY 3D');
   statusDisplay.innerHTML = 
     `MODEL: ${modelName}<br/>` +
-    `CAMERA: ${modeLabel} | SPEED: ${currentScaledSpeed.toFixed(2)} m/s<br/>` +
+    `CAMERA: ${modeLabel} | SPEED: ${currentScaledSpeed.toFixed(1)} m/s<br/>` +
     `POS: [X:${playerPos.x.toFixed(1)} Y:${playerPos.y.toFixed(1)} Z:${playerPos.z.toFixed(1)}]`;
 }
 
@@ -953,7 +976,7 @@ document.addEventListener('keydown', (e) => {
   if (e.code === 'KeyD') moveState.right = true;
   if (e.code === 'Space') moveState.moveUp = true;
   if (e.code === 'ControlLeft' || e.code === 'ControlRight') moveState.moveDown = true;
-  if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') speedMultiplier = 2.0;
+  if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') speedMultiplier = 2.5;
   if (e.code === 'KeyF') setCameraMode(activeCameraMode === 'walk' ? 'fly' : 'walk');
 });
 document.addEventListener('keyup', (e) => {
@@ -977,7 +1000,7 @@ document.addEventListener('mousemove', (e) => {
 // File Loader handlers
 fileInput.addEventListener('change', (e) => {
   if (e.target.files[0]) {
-    activeSpawnPos.set(0, 5, 0);
+    activeCaveConfig = { title: e.target.files[0].name, filename: e.target.files[0].name, spawnType: 'highest' };
     loadCaveModel(URL.createObjectURL(e.target.files[0]), e.target.files[0].name);
   }
 });
@@ -1017,6 +1040,16 @@ function loadCaveModel(url, displayName) {
         gridHelper.position.y = 0;
         gridHelper.scale.set(Math.max(1, caveBounds.x * 0.04), 1, Math.max(1, caveBounds.z * 0.04));
 
+        // Determine Spawn Point
+        if (activeCaveConfig && activeCaveConfig.spawnType === 'highest') {
+          const topPoint = findHighestMeshPoint(currentCaveMesh);
+          activeSpawnPos.set(topPoint.x, topPoint.y - 0.5, topPoint.z);
+        } else if (activeCaveConfig && activeCaveConfig.spawn) {
+          activeSpawnPos.copy(activeCaveConfig.spawn);
+        } else {
+          activeSpawnPos.set(0, caveBounds.y * 0.5, 0);
+        }
+
         playerPos.copy(activeSpawnPos);
         modelName = `${displayName} (${Math.round(caveBounds.x)}m × ${Math.round(caveBounds.y)}m × ${Math.round(caveBounds.z)}m)`;
         
@@ -1050,16 +1083,16 @@ function snapToMeshFloor(deltaTime) {
   if (!currentCaveMesh) return null;
 
   const rayOrigin = playerPos.clone();
-  rayOrigin.y += Math.max(0.15, Math.min(0.4, eyeHeight * 0.5)); 
+  rayOrigin.y += Math.max(0.2, eyeHeight * 0.5); 
   groundRaycaster.set(rayOrigin, downVector);
-  groundRaycaster.far = Math.max(3.0, eyeHeight + 2.5);
+  groundRaycaster.far = Math.max(6.0, eyeHeight + 4.0);
 
   const hits = groundRaycaster.intersectObject(currentCaveMesh, true);
   if (hits.length > 0) {
     let validHit = null;
     for (let i = 0; i < hits.length; i++) {
       const h = hits[i];
-      if (h.point.y <= (playerPos.y + 0.3) && (!h.face || h.face.normal.y > 0.25)) {
+      if (h.point.y <= (playerPos.y + 0.6) && (!h.face || h.face.normal.y > 0.15)) {
         validHit = h;
         break;
       }
@@ -1069,10 +1102,10 @@ function snapToMeshFloor(deltaTime) {
       const targetY = validHit.point.y + eyeHeight;
       const diffY = targetY - playerPos.y;
 
-      if (diffY > 0 && diffY <= 0.6) {
+      if (diffY > 0 && diffY <= 1.0) {
         playerPos.y = targetY;
       } else if (diffY <= 0) {
-        playerPos.y = THREE.MathUtils.lerp(playerPos.y, targetY, Math.min(1.0, 22.0 * deltaTime));
+        playerPos.y = THREE.MathUtils.lerp(playerPos.y, targetY, Math.min(1.0, 20.0 * deltaTime));
       }
       lastKnownFloorY = validHit.point.y;
       return validHit.point.y;
